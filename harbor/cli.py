@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 import signal
 import sys
 import webbrowser
@@ -11,6 +12,7 @@ import webbrowser
 from . import __version__
 from .app import build, serve_harbor
 from .config import ConfigError, load_settings
+from .state import QueueStore, default_state_file
 
 
 def _quality(v: str) -> int:
@@ -60,14 +62,37 @@ def cmd_ui(args) -> int:
         print(f"harbor: {e}", file=sys.stderr)
         return 2
 
-    cq, dq = build(jobs=settings.jobs, image_threads=settings.threads, downloads=settings.downloads)
+    notes: list[str] = []  # restore notes, shown on the page
+    store = QueueStore(
+        Path(settings.state_file).expanduser() if settings.state_file else default_state_file()
+    )
+    cq, dq = build(
+        jobs=settings.jobs,
+        image_threads=settings.threads,
+        downloads=settings.downloads,
+        retries=settings.retries,
+        on_change=store.on_change,
+    )
+    store.attach(cq, dq)
+
+    def stop_queues() -> None:
+        # Save what's unfinished first: shutting down marks running jobs cancelled.
+        store.save()
+        store.enabled = False
+        dq.shutdown()  # before the converter, so no download hands it a new job
+        cq.shutdown()
+
     try:
-        server = serve_harbor(settings.port, cq, dq, settings)
+        server = serve_harbor(settings.port, cq, dq, settings, notes)
     except OSError as e:
         print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
+        store.enabled = False  # keep the saved jobs for the next start
         dq.shutdown()
         cq.shutdown()
         return 2
+    notes[:] = store.restore(settings.api_key) if settings.restore else []
+    for note in notes:
+        print(f"harbor: {note}", flush=True)
     url = f"http://127.0.0.1:{settings.port}/"
     print(f"harbor console: {url}  (Ctrl+C to stop; running jobs are cancelled, originals kept)", flush=True)
     if settings.source:
@@ -89,8 +114,7 @@ def cmd_ui(args) -> int:
         print("\nStopping…", flush=True)
     finally:
         server.server_close()
-        dq.shutdown()  # first, so no download hands a new job to a stopping converter
-        cq.shutdown()
+        stop_queues()
     return 0
 
 

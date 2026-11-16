@@ -121,6 +121,15 @@ class LoadSettingsTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigError, msg):
                     load_settings(environ={})
 
+    def test_new_settings(self):
+        self.write("HARBOR_METHOD=2\nHARBOR_RETRIES=0\nHARBOR_RESTORE=false\nHARBOR_STATE_FILE=/tmp/q.json\n")
+        s = load_settings(environ={})
+        self.assertEqual((s.method, s.retries, s.restore, s.state_file), (2, 0, False, "/tmp/q.json"))
+        self.assertEqual(s.page_defaults()["method"], 2)
+        self.write("HARBOR_METHOD=7\n")
+        with self.assertRaisesRegex(ConfigError, "HARBOR_METHOD"):
+            load_settings(environ={})
+
     def test_key_not_in_repr_or_page_defaults(self):
         self.write("HARBOR_API_KEY=super-secret\n")
         s = load_settings(environ={})
@@ -208,6 +217,24 @@ class EnvKeyConsoleTests(unittest.TestCase):
         self.dq.wait_idle()
         req = [r for r in self.files_server.requests if r["path"].startswith("/secure")][-1]
         self.assertNotIn("X-API-Key", req["headers"])
+
+    def test_notes_added_after_start_reach_the_page(self):
+        notes = []
+        cq, dq = build(jobs=1, image_threads=1, downloads=1)
+        server = serve_harbor(0, cq, dq, Settings(), notes)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            notes[:] = ["restored 2 unfinished job(s) from the last run"]  # what `harbor ui` does
+            conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+            conn.request("GET", "/api/state")
+            st = json.loads(conn.getresponse().read())
+            conn.close()
+            self.assertEqual(st["harbor"]["notes"], notes)
+        finally:
+            server.shutdown()
+            server.server_close()
+            dq.shutdown()
+            cq.shutdown()
 
     def test_harbor_api_has_no_actions(self):
         self.assertEqual(self.call("POST", "/api/harbor/anything", {})[0], 404)

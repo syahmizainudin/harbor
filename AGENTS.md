@@ -18,12 +18,16 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 |---|---|
 | `harbor/app.py` | `check_after` (validates a download's convert options), `make_on_saved` (the hand-off), `build` (starts both queues) and `serve_harbor` (mounts `ConvertAPI` at `/api/`, `EnvKeyDownloadAPI` at `/api/download/` and `HarborAPI`, page defaults only, at `/api/harbor/`) |
 | `harbor/config.py` | Settings: `.env` parsing, file lookup, precedence (flag > environment > file > default), validation |
+| `harbor/state.py` | `QueueStore`: saves unfinished jobs on every change, restores them at start-up through the queues' `add` |
+| `harbor/extension.py` | The Chrome extension's fixed ID and origin |
+| `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
+| `ecosystem.config.cjs` | pm2 config that keeps harbor running |
 | `harbor/ui.html` | The two-tab page: one file, CSS and JS inline (including the logo and favicon), no external requests |
 | `assets/logo.svg` | The logo. The page inlines it twice (header and favicon data URI); `LogoTests` checks they match |
 | `.env.example` | Every setting, commented. Real `.env` files are git-ignored |
 | `harbor/cli.py` | `harbor ui` |
 | `bin/harbor` | Runs the CLI from a checkout |
-| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
+| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
 | `ci/release_notes.py`, `.github/workflows/` | Release gate, CI and release pipelines, as in the other two repos |
 
 ## Where a change belongs
@@ -46,10 +50,27 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - Every setting goes through `config.VARS` with a validator. A bad value or a misspelled `HARBOR_` name stops startup with the file and setting named, rather than being silently ignored.
 - Never commit a `.env` or a real key. Never read the user's real `.env` in tests; `LoadSettingsTests` changes into a temp folder and redirects `Path.home()`.
 
+## Saved jobs (`state.py`)
+
+- Never write the API key. Only `auth_mode` and `auth_name` are saved; restore uses the `.env` key or skips the download with a note.
+- The shutdown order in `cli.cmd_ui` matters: save, disable the store, then stop the download queue, then the convert queue. `shutdown()` marks running jobs cancelled, and saving after that would drop them.
+- Only queued and running jobs are saved. Restoring removes a download's recorded `.part` first; resuming across restarts is not supported.
+- Save with a temp file and `os.replace`, mode 0600. A file that won't parse is moved to `.bad`, never deleted.
+
+## The Chrome extension
+
+- Its ID comes from the `key` in `extension/manifest.json`, so it's the same wherever it's loaded. `harbor/extension.py` holds that ID, and `test_extension.py` recomputes it from the key. The private key was thrown away; it's only needed to pack a `.crx`, which isn't done. Never commit a private key.
+- Harbor trusts the extension because of its exact `Origin`, which Chrome sets. Never widen `allowed_origins` to a pattern.
+- The extension never handles the API key: it sends `key: ""` and harbor fills in the `.env` key.
+- `host_permissions` are `http://localhost/*` and `http://127.0.0.1/*` (any port) and nothing more, and the popup refuses any other harbor address.
+- Bump `version` in the manifest when you change the extension. A user reloads it from `chrome://extensions`.
+- To test it in a browser, use Playwright's Chromium (`~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome`) with `--load-extension`; branded Chrome ignores that flag. Run it against a throwaway harbor on a free port, never the user's.
+
 ## Never touch the user's real files while testing
 
 - Run against temp folders and `helpers.FileServer` on `127.0.0.1` only, never a real URL, folder or API key.
-- To try the console, start your own copy on a free port (`bin/harbor ui -p <port>`, with the dependencies on `PYTHONPATH`) and stop it by PID when done. Do not stop a console you did not start.
+- To try the console, start your own copy on a free port (`bin/harbor ui -p <port>`, with the dependencies on `PYTHONPATH`) and a temp `HARBOR_STATE_FILE`, and stop it by PID when done. Never point a test at the user's state file.
+- The user's harbor runs under pm2 as `harbor` on 8765. Don't stop, restart or delete it, and never touch the `grove` pm2 process. After changing harbor, tell the user to run `pm2 restart harbor`.
 
 ## Test and lint
 

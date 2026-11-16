@@ -39,9 +39,33 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_AUTH_MODE` | `bearer` | Default for "API key sent as": `none`, `bearer`, `header` or `query` |
 | | `HARBOR_AUTH_NAME` | | Header or query parameter name, for `header` and `query` modes |
 | | `HARBOR_API_KEY` | | API key used when the page's key field is left empty |
+| | `HARBOR_METHOD` | 4 | Default encoder effort, 0 (fastest) to 6 (smallest files) |
+| | `HARBOR_RETRIES` | 3 | Extra attempts after a temporary download failure |
+| | `HARBOR_STATE_FILE` | `~/.local/state/harbor/queue.json` | Where unfinished jobs are saved |
+| | `HARBOR_RESTORE` | `true` | Add saved jobs back at start-up |
+| | `HARBOR_EXTENSION_ORIGINS` | the Harbor extension | Origins allowed besides the page: exact origins, comma-separated, or `off` |
 | `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
+
+### Unfinished jobs survive a restart
+
+Harbor saves the queued and running jobs of both tabs every time one changes, and adds them back the next time it starts. The page shows a note when it does.
+- A running job starts over.
+- Finished and cancelled jobs aren't kept.
+- **The API key is never saved.** A download that needs a key comes back only if harbor has `HARBOR_API_KEY`. Otherwise, the note asks you to add it again.
+
+### Keep it running in the background
+
+`ecosystem.config.cjs` runs harbor under [pm2](https://pm2.keymetrics.io/), as Grove does:
+
+```bash
+pm2 start ecosystem.config.cjs && pm2 save   # start now, and remember it
+pm2 logs harbor                              # its output
+pm2 restart harbor                           # after changing .env or updating
+```
+
+To start pm2 itself when WSL starts, run the command `pm2 startup` prints (it needs `sudo`).
 
 ## Settings file (`.env`)
 
@@ -76,6 +100,27 @@ Values in the file fill the Download tab's fields only when this browser hasn't 
 The key is never shown in the queue or sent on redirects. See [dl-queue's README](https://github.com/syahmizainudin/dl-queue#how-downloads-are-handled) for how files are named and saved.
 
 For each tool on its own, use `cbz-webp` and `dl-queue` directly; both have their own CLI and page.
+
+## Chrome extension
+
+The `extension/` folder is a Chrome extension that sends links to harbor:
+
+- **Right-click a link → Send link to Harbor.** Right-click a page → **Send this page to Harbor**.
+- **The toolbar popup:**
+  - shows whether harbor is running, with its active downloads and conversions;
+  - sends the current tab;
+  - lists the links on the page (archives by default, or all links), so you can tick some and send them together.
+- **The toolbar badge** counts active jobs, and reads `off` when harbor isn't running.
+
+Downloads sent this way use harbor's defaults: the `.env` key, folder and auth settings, and the Convert quality, effort and delete settings. The popup's Settings can change the harbor address, the save-to folder and whether archives are converted.
+
+**Install (Chrome on Windows):**
+
+1. Open `chrome://extensions` and turn on **Developer mode**.
+2. Click **Load unpacked** and choose `\\wsl.localhost\Ubuntu\app\tools\harbor\extension`.
+3. Pin the Harbor icon. Harbor must be running (see above).
+
+The extension always gets the ID `pioghlmpnbcbgiemaphgpnendofahggb`, because its manifest carries a fixed public key. Harbor accepts requests from exactly that origin, which the browser sets itself: other websites and other extensions are still refused. The extension never sees the API key. It sends downloads without one, and harbor adds the `.env` key.
 
 ## Development
 

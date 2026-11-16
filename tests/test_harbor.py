@@ -65,14 +65,17 @@ class HandOffTests(Base):
 
     def test_archive_is_converted_and_linked(self):
         (job,), _ = self.dq.add(
-            [self.url("/secure/Chapter%2001.zip")], self.dir, Auth("bearer", KEY), after={"quality": 60}
+            [self.url("/secure/Chapter%2001.zip")],
+            self.dir,
+            Auth("bearer", KEY),
+            after={"quality": 60, "method": 1},
         )
         self.wait()
         (conv,) = self.cq.jobs()
         self.assertEqual(
             (job.state, job.linked_id, job.message), (DONE, conv.id, "saved; queued for conversion")
         )
-        self.assertEqual((conv.state, conv.quality, conv.delete_original), (DONE, 60, True))
+        self.assertEqual((conv.state, conv.quality, conv.method, conv.delete_original), (DONE, 60, 1, True))
         self.assertEqual(self.files(), ["Chapter 01.cbz"])
         with zipfile.ZipFile(self.dir / "Chapter 01.cbz") as z:
             self.assertIn("001.webp", z.namelist())
@@ -103,10 +106,14 @@ class HandOffTests(Base):
         self.assertEqual(self.files(), ["broken.zip"])
 
     def test_check_after(self):
-        self.assertEqual(check_after({}), {"convert": True, "quality": 80, "delete_original": True})
+        self.assertEqual(
+            check_after({}), {"convert": True, "quality": 80, "delete_original": True, "method": 4}
+        )
+        with self.assertRaises(ValueError):
+            check_after({"method": 9})
         self.assertEqual(
             check_after({"convert": 0, "quality": "55", "delete_original": False}),
-            {"convert": False, "quality": 55, "delete_original": False},
+            {"convert": False, "quality": 55, "delete_original": False, "method": 4},
         )
         for bad in ({"quality": 0}, {"quality": 101}, {"quality": "x"}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):

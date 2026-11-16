@@ -76,6 +76,11 @@ class Settings:
     auth_mode: str = "bearer"
     auth_name: str = ""
     api_key: str = field(default="", repr=False)
+    method: int = 4
+    retries: int = 3
+    state_file: str = ""  # empty: default_state_file()
+    restore: bool = True
+    extension_origins: str = ""  # empty: harbor's own Chrome extension; "off": none
     source: str | None = None  # the .env file used, for the startup message
 
     def page_defaults(self) -> dict:
@@ -86,7 +91,19 @@ class Settings:
             "auth_name": self.auth_name,
             "has_key": bool(self.api_key),
             "delete_original": self.delete_original,
+            "method": self.method,
         }
+
+    def allowed_origins(self) -> set[str]:
+        """Origins (besides the page) allowed to send requests: harbor's Chrome extension by default."""
+        from .extension import EXTENSION_ORIGIN
+
+        value = self.extension_origins.strip()
+        if value.lower() == "off":
+            return set()
+        if not value:
+            return {EXTENSION_ORIGIN}
+        return {o.strip() for o in value.split(",") if o.strip()}
 
 
 # setting name -> (environment variable, converter)
@@ -118,6 +135,15 @@ def _auth_mode(v: str, name: str) -> str:
     return v
 
 
+def _origins(v: str, name: str) -> str:
+    if v.strip().lower() == "off":
+        return "off"
+    for o in (x.strip() for x in v.split(",")):
+        if o and not re.fullmatch(r"(chrome-extension://[a-p]{32}|https?://[A-Za-z0-9.-]+(:\d+)?)", o):
+            raise ConfigError(f"{name}: {o!r} is not an exact origin like chrome-extension://<id>")
+    return v
+
+
 def _text(v: str, name: str) -> str:
     if any(c in v for c in "\r\n\0"):
         raise ConfigError(f"{name} contains a line break")
@@ -135,6 +161,11 @@ VARS = {
     "auth_mode": ("HARBOR_AUTH_MODE", _auth_mode),
     "auth_name": ("HARBOR_AUTH_NAME", _text),
     "api_key": ("HARBOR_API_KEY", _text),
+    "method": ("HARBOR_METHOD", _int(0, 6)),
+    "retries": ("HARBOR_RETRIES", _int(0)),
+    "state_file": ("HARBOR_STATE_FILE", _text),
+    "restore": ("HARBOR_RESTORE", _bool),
+    "extension_origins": ("HARBOR_EXTENSION_ORIGINS", _origins),
 }
 
 
