@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 from pathlib import Path
 import signal
 import sys
 import webbrowser
 
 from . import __version__
-from .app import build, serve_harbor
+from .app import build, default_library_cache, default_library_db, make_library_hook, serve_harbor
+from cbzshelf.library import Library
+
 from .config import ConfigError, load_settings
 from .state import QueueStore, default_state_file
 
@@ -63,6 +66,14 @@ def cmd_ui(args) -> int:
         return 2
 
     notes: list[str] = []  # restore notes, shown on the page
+    try:
+        library = Library(
+            Path(settings.library_db).expanduser() if settings.library_db else default_library_db(),
+            default_library_cache(),
+        )
+    except (OSError, sqlite3.Error) as e:
+        print(f"harbor: cannot open the library database: {e}", file=sys.stderr)
+        return 2
     store = QueueStore(
         Path(settings.state_file).expanduser() if settings.state_file else default_state_file()
     )
@@ -72,6 +83,7 @@ def cmd_ui(args) -> int:
         downloads=settings.downloads,
         retries=settings.retries,
         on_change=store.on_change,
+        on_convert_change=make_library_hook(library),
     )
     store.attach(cq, dq)
 
@@ -81,15 +93,19 @@ def cmd_ui(args) -> int:
         store.enabled = False
         dq.shutdown()  # before the converter, so no download hands it a new job
         cq.shutdown()
+        library.close()  # last: a finishing conversion may still add a book
 
     try:
-        server = serve_harbor(settings.port, cq, dq, settings, notes)
+        server = serve_harbor(settings.port, cq, dq, settings, notes, library)
     except OSError as e:
         print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
         store.enabled = False  # keep the saved jobs for the next start
         dq.shutdown()
         cq.shutdown()
+        library.close()
         return 2
+    if settings.library_scan and library.roots():
+        library.scan()  # picks up what changed while harbor was stopped; runs in the background
     notes[:] = store.restore(settings.api_key) if settings.restore else []
     for note in notes:
         print(f"harbor: {note}", flush=True)

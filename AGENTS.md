@@ -10,6 +10,7 @@ Harbor serves two public tools on one two-tab local page and connects them: a fi
 |---|---|
 | `harbor` (this one, private) | The combined page, the download → convert hand-off, and the `harbor` command |
 | `cbz-webp` (public) | The converter: `JobQueue`, `ConvertAPI`, and the generic server `serve` that harbor uses |
+| `cbz-shelf` (public) | The library and reader: `Library`, `LibraryAPI` and its page, served at `/library` in harbor's Library tab |
 | `dl-queue` (public) | The downloader: `DownloadQueue` with the `on_saved` and `check_after` hooks, `Auth`, `DownloadAPI` |
 
 Both are dependencies in `pyproject.toml`, pinned by git tag.
@@ -27,7 +28,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `.env.example` | Every setting, commented. Real `.env` files are git-ignored |
 | `harbor/cli.py` | `harbor ui` |
 | `bin/harbor` | Runs the CLI from a checkout |
-| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
+| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `test_library_tab.py` (library mounted, conversions landing in it), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
 | `ci/release_notes.py`, `.github/workflows/` | Release gate, CI and release pipelines, as in the other two repos |
 
 ## Where a change belongs
@@ -49,6 +50,13 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - The `.env` key (`HARBOR_API_KEY`) stays on the server. `Settings.page_defaults()` exposes only `has_key`, and `Settings` hides `api_key` from `repr`. `EnvKeyDownloadAPI` adds it only when the page sends a mode other than `none` with an empty key. Tests check that the key never shows up in `/api/state`.
 - Every setting goes through `config.VARS` with a validator. A bad value or a misspelled `HARBOR_` name stops startup with the file and setting named, rather than being silently ignored.
 - Never commit a `.env` or a real key. Never read the user's real `.env` in tests; `LoadSettingsTests` changes into a temp folder and redirects `Path.home()`.
+
+## The Library tab
+
+- cbz-shelf's `LibraryAPI` is mounted at `/api/library/`, and its page at `/library`. Harbor's tab frames that page (`<iframe>`, loaded the first time the tab opens). This works because the shared server sends `X-Frame-Options: SAMEORIGIN`.
+- `make_library_hook` is the convert queue's `on_convert_change`: a conversion that finishes inside a library folder is indexed at once with `Library.scan_file`. Conversions elsewhere are ignored. A full rescan runs at start-up (`HARBOR_LIBRARY_SCAN`).
+- On shutdown, close the library last, after both queues.
+- Library behaviour (scanning, metadata layers, the reader) belongs in cbz-shelf, not here; follow its AGENTS.md rules. Never point a test at the user's library database (`HARBOR_LIBRARY_DB`, default `~/.local/share/harbor/library.db`).
 
 ## Saved jobs (`state.py`)
 

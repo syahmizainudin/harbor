@@ -81,6 +81,8 @@ class Settings:
     state_file: str = ""  # empty: default_state_file()
     restore: bool = True
     extension_origins: str = ""  # empty: harbor's own Chrome extension; "off": none
+    library_db: str = ""  # empty: app.default_library_db()
+    library_scan: bool = True  # rescan library folders at start-up
     source: str | None = None  # the .env file used, for the startup message
 
     def page_defaults(self) -> dict:
@@ -166,6 +168,8 @@ VARS = {
     "state_file": ("HARBOR_STATE_FILE", _text),
     "restore": ("HARBOR_RESTORE", _bool),
     "extension_origins": ("HARBOR_EXTENSION_ORIGINS", _origins),
+    "library_db": ("HARBOR_LIBRARY_DB", _text),
+    "library_scan": ("HARBOR_LIBRARY_SCAN", _bool),
 }
 
 

@@ -13,8 +13,13 @@ from collections.abc import Callable
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import os
+
+from cbzshelf.library import Library
+from cbzshelf.web import UI_HTML as LIBRARY_HTML
+from cbzshelf.web import LibraryAPI
 from cbzwebp.core import ARCHIVE_EXTS
-from cbzwebp.jobqueue import JobQueue
+from cbzwebp.jobqueue import DONE, JobQueue
 from cbzwebp.web import ConvertAPI, serve
 from dlqueue.download import Download, DownloadQueue
 from dlqueue.web import DownloadAPI
@@ -71,12 +76,20 @@ def build(
     timeout: float = 60,
     retries: int = 3,
     on_change: Callable | None = None,
+    on_convert_change: Callable | None = None,
 ) -> tuple[JobQueue, DownloadQueue]:
     """Start both queues, with downloads handing archives to the convert queue.
 
-    ``on_change`` is called after any job in either queue changes (harbor saves its state there).
+    ``on_change`` is called after any job in either queue changes (harbor saves its state there);
+    ``on_convert_change`` only for conversions (harbor adds finished ones to the library).
     """
-    convert_queue = JobQueue(workers=jobs, image_threads=image_threads, on_change=on_change).start()
+
+    def convert_changed(job) -> None:
+        for hook in (on_change, on_convert_change):
+            if hook:
+                hook(job)
+
+    convert_queue = JobQueue(workers=jobs, image_threads=image_threads, on_change=convert_changed).start()
     download_queue = DownloadQueue(
         workers=downloads,
         on_saved=make_on_saved(convert_queue),
@@ -86,6 +99,29 @@ def build(
         on_change=on_change,
     ).start()
     return convert_queue, download_queue
+
+
+def default_library_db() -> Path:
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "harbor" / "library.db"
+
+
+def default_library_cache() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "harbor" / "thumbs"
+
+
+def make_library_hook(library: Library):
+    """When a conversion finishes inside a library folder, add the new .cbz to the library now."""
+
+    def on_convert_change(job) -> None:
+        if job.state == DONE and job.output:
+            try:
+                library.scan_file(job.output)  # no-op outside the library's folders
+            except Exception as e:  # noqa: BLE001 - the next full scan picks it up anyway
+                print(f"harbor: couldn't add {job.output} to the library: {e}", flush=True)
+
+    return on_convert_change
 
 
 class EnvKeyDownloadAPI(DownloadAPI):
@@ -123,12 +159,18 @@ def serve_harbor(
     download_queue: DownloadQueue,
     settings: Settings | None = None,
     notes: list[str] | None = None,
+    library: Library | None = None,
 ) -> ThreadingHTTPServer:
-    """The two-tab page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/."""
+    """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
+    with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab)."""
     settings = settings or Settings()
     apis = {
         "/api/": ConvertAPI(convert_queue, {"quality": settings.quality, "method": settings.method}),
         "/api/download/": EnvKeyDownloadAPI(download_queue, settings.api_key),
         "/api/harbor/": HarborAPI(settings, notes),
     }
-    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins())
+    pages = {}
+    if library is not None:
+        apis["/api/library/"] = LibraryAPI(library)
+        pages["/library"] = LIBRARY_HTML
+    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages)

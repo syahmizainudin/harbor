@@ -4,12 +4,13 @@
 
 [![CI](https://github.com/syahmizainudin/harbor/actions/workflows/ci.yml/badge.svg)](https://github.com/syahmizainudin/harbor/actions/workflows/ci.yml)
 
-Harbor puts two tools on one local web page:
+Harbor puts three tools on one local web page:
 
 - **Convert** ([cbz-webp](https://github.com/syahmizainudin/cbz-webp)) recompresses the images inside `.zip` and `.cbz` archives to WebP and saves them as `.cbz`.
 - **Download** ([dl-queue](https://github.com/syahmizainudin/dl-queue)) downloads files from direct URLs, optionally with an API key.
+- **Library** ([cbz-shelf](https://github.com/syahmizainudin/cbz-shelf)) scans your comic folders into a searchable library with editable metadata, and has a reader.
 
-Downloaded archives can go straight into the Convert queue, so a list of URLs becomes a folder of compressed `.cbz` files.
+Downloaded archives can go straight into the Convert queue. A converted file that lands in a library folder joins the library right away. So a list of URLs becomes compressed `.cbz` books, ready to read.
 
 ## Install
 
@@ -44,6 +45,8 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_STATE_FILE` | `~/.local/state/harbor/queue.json` | Where unfinished jobs are saved |
 | | `HARBOR_RESTORE` | `true` | Add saved jobs back at start-up |
 | | `HARBOR_EXTENSION_ORIGINS` | the Harbor extension | Origins allowed besides the page: exact origins, comma-separated, or `off` |
+| | `HARBOR_LIBRARY_DB` | `~/.local/share/harbor/library.db` | The Library tab's database (folders, metadata edits, reading progress) |
+| | `HARBOR_LIBRARY_SCAN` | `true` | Rescan library folders when harbor starts |
 | `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
@@ -99,7 +102,16 @@ Values in the file fill the Download tab's fields only when this browser hasn't 
 
 The key is never shown in the queue or sent on redirects. See [dl-queue's README](https://github.com/syahmizainudin/dl-queue#how-downloads-are-handled) for how files are named and saved.
 
-For each tool on its own, use `cbz-webp` and `dl-queue` directly; both have their own CLI and page.
+**Library tab:**
+
+1. Click **Folders** and add a top-level folder of comics. Each folder of archives becomes a series (or the `Series` in an archive's `ComicInfo.xml`), and metadata is read from `ComicInfo.xml` and file names.
+2. Browse by series, search, and filter by tag or author.
+3. Edit any book's or series' details. Edits are kept in harbor's library database; your files are never changed.
+4. Read in single-page, two-page or vertical-scroll layout, left to right or right to left (manga).
+
+[cbz-shelf's README](https://github.com/syahmizainudin/cbz-shelf#readme) covers the details. The tab uses its own database (`HARBOR_LIBRARY_DB`), separate from a standalone `cbz-shelf`'s.
+
+For each tool on its own, use `cbz-webp`, `dl-queue` and `cbz-shelf` directly; each has its own CLI and page.
 
 ## Chrome extension
 

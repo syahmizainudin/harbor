@@ -34,6 +34,7 @@
            background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 18px; text-align: center; }
   .badge:empty { display: none; }
   [hidden] { display: none !important; }
+  #libFrame { display: block; width: 100%; height: calc(100vh - 150px); min-height: 480px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   label, .label { display: block; font-weight: 600; margin-bottom: 6px; }
   .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
@@ -126,6 +127,7 @@
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert">Convert<span class="badge" id="badge-convert"></span></button>
     <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download">Download<span class="badge" id="badge-download"></span></button>
+    <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library">Library</button>
   </div>
 
   <!-- ===================== Convert ===================== -->
@@ -235,6 +237,10 @@
       </table>
     </section>
   </div>
+  <!-- ===================== Library (cbz-shelf, framed) ===================== -->
+  <div id="pane-library" role="tabpanel" aria-labelledby="tab-library" hidden>
+    <iframe id="libFrame" title="Library" allow="fullscreen"></iframe>
+  </div>
 </main>
 
 <!-- ===================== Folder picker ===================== -->
@@ -292,10 +298,12 @@ function showTab(name) {
     t.setAttribute("aria-selected", on);
     $("pane-" + t.dataset.tab).hidden = !on;
   }
+  // The library loads the first time its tab opens, not with every harbor page view.
+  if (name === "library" && !$("libFrame").src) $("libFrame").src = "/library";
   store.set("tab", name);
 }
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
-showTab(store.get("tab", "convert") === "download" ? "download" : "convert");
+showTab(["download", "library"].includes(store.get("tab")) ? store.get("tab") : "convert");
 
 /* ---------- folder picker ---------- */
 let pickerTarget = null, pickerCurrent = null;
