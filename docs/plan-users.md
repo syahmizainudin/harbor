@@ -1,6 +1,6 @@
 # Plan: accounts, permissions, favourites and per-user settings
 
-Status: phase 1 released (cbz-shelf 0.3.0). Phase 2 built (cbz-webp 0.4.0, dl-queue 0.4.0, cbz-shelf 0.3.1, harbor). Phases 3 and 4 not started. Decisions settled 2026-11-16, below.
+Status: phase 1 released (cbz-shelf 0.3.0). Phase 2 released (cbz-webp 0.4.0, dl-queue 0.4.0, cbz-shelf 0.3.2, harbor). Phases 3 and 4 not started. Decisions settled 2026-11-16, below.
 
 ## What was asked
 
