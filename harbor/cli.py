@@ -11,7 +11,14 @@ import sys
 import webbrowser
 
 from . import __version__
-from .app import build, default_library_cache, default_library_db, make_library_hook, serve_harbor
+from .app import (
+    build,
+    default_library_cache,
+    default_library_db,
+    make_library_file_hook,
+    make_library_hook,
+    serve_harbor,
+)
 from cbzshelf.library import Library
 
 from .config import ConfigError, load_settings
@@ -84,6 +91,7 @@ def cmd_ui(args) -> int:
         retries=settings.retries,
         on_change=store.on_change,
         on_convert_change=make_library_hook(library),
+        on_download_kept=make_library_file_hook(library),
     )
     store.attach(cq, dq)
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from cbzshelf.library import Library
 from helpers import FileServer, comic_entries, make_zip
 
-from harbor.app import build, make_library_hook, serve_harbor
+from harbor.app import build, make_library_file_hook, make_library_hook, serve_harbor
 from harbor.config import Settings, load_settings
 
 
@@ -31,6 +31,7 @@ class LibraryTabTests(unittest.TestCase):
             timeout=10,
             retries=0,
             on_convert_change=make_library_hook(self.lib),
+            on_download_kept=make_library_file_hook(self.lib),
         )
         self.server = serve_harbor(0, self.cq, self.dq, Settings(), library=self.lib)
         self.port = self.server.server_address[1]
@@ -99,6 +100,16 @@ class LibraryTabTests(unittest.TestCase):
         self.dq.wait_idle()
         self.cq.wait_idle()
         self.assertEqual([b["file"] for b in self.books(expect=1)], ["Chapter 01.cbz"])
+
+    def test_kept_download_into_library_is_added(self):
+        src = make_zip(self.dir / "src.zip", comic_entries())
+        files = FileServer({"Kept.cbz": src.read_bytes()})
+        self.addCleanup(files.close)
+        # Conversion off: the file is kept as downloaded, and still lands in the library.
+        self.dq.add([files.base + "/files/x/Kept.cbz"], self.comics / "Series A", after={"convert": False})
+        self.dq.wait_idle()
+        self.assertEqual([b["file"] for b in self.books(expect=1)], ["Kept.cbz"])
+        self.assertEqual(self.cq.snapshot(), [])  # nothing was converted
 
     def test_library_settings(self):
         env = self.dir / "x.env"

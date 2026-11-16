@@ -47,12 +47,17 @@ def check_after(after: dict) -> dict:
     }
 
 
-def make_on_saved(convert_queue: JobQueue):
-    """After a download is saved, queue it for conversion if it is an archive and asked for."""
+def make_on_saved(convert_queue: JobQueue, on_kept: Callable[[Path], None] | None = None):
+    """After a download is saved, queue it for conversion if it is an archive and asked for.
+
+    ``on_kept(path)`` is called for a file that isn't converted (an .epub, or with conversion off),
+    so harbor can add it to the library at once."""
 
     def on_saved(job: Download, path: Path) -> None:
         after = job.after
         if not after.get("convert") or path.suffix.lower() not in ARCHIVE_EXTS:
+            if on_kept:
+                on_kept(path)
             return
         added, _ = convert_queue.add(
             [path],
@@ -77,11 +82,13 @@ def build(
     retries: int = 3,
     on_change: Callable | None = None,
     on_convert_change: Callable | None = None,
+    on_download_kept: Callable[[Path], None] | None = None,
 ) -> tuple[JobQueue, DownloadQueue]:
     """Start both queues, with downloads handing archives to the convert queue.
 
     ``on_change`` is called after any job in either queue changes (harbor saves its state there);
-    ``on_convert_change`` only for conversions (harbor adds finished ones to the library).
+    ``on_convert_change`` only for conversions (harbor adds finished ones to the library);
+    ``on_download_kept`` with the path of a download that isn't converted.
     """
 
     def convert_changed(job) -> None:
@@ -92,7 +99,7 @@ def build(
     convert_queue = JobQueue(workers=jobs, image_threads=image_threads, on_change=convert_changed).start()
     download_queue = DownloadQueue(
         workers=downloads,
-        on_saved=make_on_saved(convert_queue),
+        on_saved=make_on_saved(convert_queue, on_download_kept),
         check_after=check_after,
         timeout=timeout,
         retries=retries,
@@ -122,6 +129,18 @@ def make_library_hook(library: Library):
                 print(f"harbor: couldn't add {job.output} to the library: {e}", flush=True)
 
     return on_convert_change
+
+
+def make_library_file_hook(library: Library):
+    """When a download is kept as it is (an .epub, say) inside a library folder, add it now."""
+
+    def add(path: Path) -> None:
+        try:
+            library.scan_file(path)  # no-op outside the library's folders or for other file types
+        except Exception as e:  # noqa: BLE001 - the next full scan picks it up anyway
+            print(f"harbor: couldn't add {path} to the library: {e}", flush=True)
+
+    return add
 
 
 class EnvKeyDownloadAPI(DownloadAPI):
