@@ -7,6 +7,9 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 - **Library tab:** [cbz-shelf](https://github.com/syahmizainudin/cbz-shelf) in harbor. Add folders and every `.cbz` inside is grouped into series and indexed for search. Edit metadata (authors, tags, and more) and read in the browser: single page, two pages, or vertical scroll, left to right or right to left. Progress is saved. Settings: `HARBOR_LIBRARY_DB`, `HARBOR_LIBRARY_SCAN`.
 - A conversion that finishes inside a library folder is added to the library right away, so a download saved into a library folder shows up as a book.
 - The folder pickers (harbor's, and the Library's Folders window from cbz-shelf v0.1.1) keep one size instead of resizing as you browse. Scrollbars follow the dark theme.
+- **Sidebar:** the tabs move to a sidebar (**« Collapse** shrinks it to icons), and the open tab fills the window. While a book is open, the sidebar steps aside and the reader gets the whole window.
+- **EPUB books** in the Library (cbz-shelf 0.2.0): picture EPUBs in the comic reader, text EPUBs in a text reader with contents, text size, line width and Light, Sepia or Dark colours. `.epub` downloads are never converted.
+- A download kept as it is (an `.epub`, or with conversion off) that lands in a library folder joins the library right away.
 
 - **Chrome extension** (`extension/`): right-click links or pages to send them, and a popup that shows harbor's status, sends the current tab, and lists the page's links to pick from. A badge counts active jobs. Harbor accepts exactly the extension's fixed origin (`HARBOR_EXTENSION_ORIGINS` to change).
 - **Unfinished jobs survive a restart**: saved to `HARBOR_STATE_FILE` on every change and added back at start-up (`HARBOR_RESTORE`). The key is never saved.

@@ -8,7 +8,7 @@ Harbor puts three tools on one local web page:
 
 - **Convert** ([cbz-webp](https://github.com/syahmizainudin/cbz-webp)) recompresses the images inside `.zip` and `.cbz` archives to WebP and saves them as `.cbz`.
 - **Download** ([dl-queue](https://github.com/syahmizainudin/dl-queue)) downloads files from direct URLs, optionally with an API key.
-- **Library** ([cbz-shelf](https://github.com/syahmizainudin/cbz-shelf)) scans your comic folders into a searchable library with editable metadata, and has a reader.
+- **Library** ([cbz-shelf](https://github.com/syahmizainudin/cbz-shelf)) scans your folders of comics and EPUB books into a searchable library with editable metadata, and has a comic reader and a text reader.
 
 Downloaded archives can go straight into the Convert queue. A converted file that lands in a library folder joins the library right away. So a list of URLs becomes compressed `.cbz` books, ready to read.
 
@@ -92,22 +92,24 @@ Values in the file fill the Download tab's fields only when this browser hasn't 
 
 ## The page
 
+The tabs are in a sidebar on the left; **« Collapse** shrinks it to icons. While a book is open, the sidebar steps aside and the reader fills the window.
+
 **Convert tab:** add folders or archives, or click **Open folder…** to browse WSL's folders, with shortcuts to home and each Windows drive. Set the quality and whether to delete each original `.zip` once its `.cbz` has been checked. See [cbz-webp's README](https://github.com/syahmizainudin/cbz-webp#what-happens-to-each-archive) for exactly what happens to each archive.
 
 **Download tab:**
 
 1. Paste file URLs and choose a folder to save to.
 2. Choose how the API key is sent: Bearer, a named header, a named query parameter, or none.
-3. Leave **Convert .zip / .cbz downloads** ticked to send each downloaded archive to the Convert queue, with the Convert tab's quality and delete settings. Each download then shows its convert job's progress.
+3. Leave **Convert .zip / .cbz downloads** ticked to send each downloaded archive to the Convert queue, with the Convert tab's quality and delete settings. Each download then shows its convert job's progress. A file that isn't converted (an `.epub`, or with this unticked) that lands in a library folder joins the library right away.
 
 The key is never shown in the queue or sent on redirects. See [dl-queue's README](https://github.com/syahmizainudin/dl-queue#how-downloads-are-handled) for how files are named and saved.
 
 **Library tab:**
 
-1. Click **Folders** and add a top-level folder of comics. Each folder of archives becomes a series (or the `Series` in an archive's `ComicInfo.xml`), and metadata is read from `ComicInfo.xml` and file names.
+1. Click **Folders** and add a top-level folder of comics or EPUB books. Each folder of books becomes a series (or the `Series` in an archive's `ComicInfo.xml`), and metadata is read from `ComicInfo.xml` and file names.
 2. Browse by series, search, and filter by tag or author.
 3. Edit any book's or series' details. Edits are kept in harbor's library database; your files are never changed.
-4. Read in single-page, two-page or vertical-scroll layout, left to right or right to left (manga).
+4. Read comics and picture EPUBs in single-page, two-page or vertical-scroll layout, left to right or right to left (manga). Text EPUBs open in a text reader with contents, text size, line width and Light, Sepia or Dark colours.
 
 [cbz-shelf's README](https://github.com/syahmizainudin/cbz-shelf#readme) covers the details. The tab uses its own database (`HARBOR_LIBRARY_DB`), separate from a standalone `cbz-shelf`'s.
 
