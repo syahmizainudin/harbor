@@ -24,6 +24,7 @@ from cbzshelf.library import Library
 
 from .accounts import Accounts, default_accounts_db
 from .config import ConfigError, load_settings
+from .perms import JobOwners
 from .state import QueueStore, default_state_file
 
 
@@ -66,12 +67,17 @@ def build_parser() -> argparse.ArgumentParser:
     usub = us.add_subparsers(dest="user_cmd", required=True)
     a = usub.add_parser("add", help="add an account (asks for its password)")
     a.add_argument("name")
-    a.add_argument("--admin", action="store_true", help="make it an admin")
+    a.add_argument("--admin", action="store_true", help="make it an admin (the Admin role)")
+    a.add_argument("--role", help="its role (default Member; see `harbor user roles`)")
     a.add_argument("--password-stdin", action="store_true", help="read the password from standard input")
     pw = usub.add_parser("passwd", help="set an account's password (signs it out everywhere)")
     pw.add_argument("name")
     pw.add_argument("--password-stdin", action="store_true", help="read the password from standard input")
     usub.add_parser("list", help="list accounts")
+    usub.add_parser("roles", help="list roles and their permissions")
+    r = usub.add_parser("role", help="give an account another role")
+    r.add_argument("name")
+    r.add_argument("role")
     for cmd, text in (
         ("disable", "stop an account signing in (ends its sessions and tokens)"),
         ("enable", "let a disabled account sign in again"),
@@ -105,8 +111,11 @@ def cmd_user(args) -> int:
         c = args.user_cmd
         if c == "add":
             first = accounts.count() == 0
-            user = accounts.add(args.name, _read_password(args.password_stdin), admin=args.admin)
-            print(f"Added {user['name']}{' (admin)' if user['admin'] else ''}.")
+            if args.role:
+                accounts.role(args.role)  # unknown role: fail before asking for a password
+            password = _read_password(args.password_stdin)
+            user = accounts.add(args.name, password, admin=args.admin, role=args.role)
+            print(f"Added {user['name']} ({user['role']}).")
             if first and not user["admin"]:
                 print("Note: no admin yet. Add one with --admin to manage users later.")
         elif c == "passwd":
@@ -115,10 +124,16 @@ def cmd_user(args) -> int:
             print(f"Password changed for {args.name}; signed out everywhere.")
         elif c == "list":
             for u in accounts.users():
-                flags = [f for f, on in (("admin", u["admin"]), ("disabled", u["disabled"])) if on]
-                print(u["name"] + (f"  ({', '.join(flags)})" if flags else ""))
+                print(f"{u['name']}  ({u['role']}{', disabled' if u['disabled'] else ''})")
             if not accounts.count():
                 print("No accounts yet: harbor user add NAME --admin")
+        elif c == "roles":
+            for r in accounts.roles():
+                perms = "every permission" if r["locked"] else ", ".join(r["perms"]) or "nothing"
+                print(f"{r['name']}  ({r['members']} member(s)): {perms}")
+        elif c == "role":
+            user = accounts.set_role(args.name, args.role)
+            print(f"{user['name']} is now {user['role']}.")
         elif c in ("disable", "enable"):
             accounts.set_disabled(args.name, c == "disable")
             print(f"{args.name} {'disabled' if c == 'disable' else 'enabled'}.")
@@ -156,7 +171,9 @@ def cmd_ui(args) -> int:
     store = QueueStore(
         Path(settings.state_file).expanduser() if settings.state_file else default_state_file()
     )
+    owners = JobOwners()  # who queued each job, shared by the hand-off, the saved state and the API
     cq, dq = build(
+        owners=owners,
         jobs=settings.jobs,
         image_threads=settings.threads,
         downloads=settings.downloads,
@@ -165,7 +182,7 @@ def cmd_ui(args) -> int:
         on_convert_change=make_library_hook(library),
         on_download_kept=make_library_file_hook(library),
     )
-    store.attach(cq, dq)
+    store.attach(cq, dq, owners)
 
     def stop_queues() -> None:
         # Save what's unfinished first: shutting down marks running jobs cancelled.
@@ -204,7 +221,7 @@ def cmd_ui(args) -> int:
                 f"harbor: gave {moved} reading record(s) from before accounts to {admin['name']}", flush=True
             )
     try:
-        server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts)
+        server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts, owners)
     except OSError as e:
         print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
         store.enabled = False  # keep the saved jobs for the next start

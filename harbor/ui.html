@@ -47,6 +47,17 @@
   body.narrow .side-btn { justify-content: center; }
   body.narrow .side-btn .txt { display: none; }
   #acctDlg { width: min(520px, calc(100vw - 32px)); }
+  /* admin */
+  .matrix { border-collapse: collapse; }
+  .matrix th, .matrix td { padding: 6px 10px; border-top: 1px solid var(--line); text-align: center; white-space: nowrap; }
+  .matrix th:first-child, .matrix td:first-child { text-align: left; white-space: normal; }
+  .matrix thead th { vertical-align: bottom; border-top: none; }
+  .matrix .rname { display: block; color: var(--text); font-size: 13px; }
+  .adm-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .adm-form input { flex: 1; min-width: 140px; }
+  #seriesEditDlg { width: min(560px, calc(100vw - 32px)); }
+  #seriesEditDlg label { margin: 10px 0 4px; }
+  #seriesEditDlg input, #seriesEditDlg textarea { width: 100%; }
   #acctDlg section + section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
   #acctDlg h3 { font-size: 14px; margin: 0 0 8px; }
   #acctDlg input { width: 100%; margin-bottom: 8px; }
@@ -177,6 +188,7 @@
     <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert" title="Convert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg><span class="txt">Convert</span><span class="badge" id="badge-convert"></span></button>
     <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download" title="Download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span class="txt">Download</span><span class="badge" id="badge-download"></span></button>
     <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library" title="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 15M3 20h18"/></svg><span class="txt">Library</span></button>
+    <button class="tab" role="tab" id="tab-admin" aria-controls="pane-admin" data-tab="admin" title="Admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg><span class="txt">Admin</span></button>
   </div>
   <div class="side-acct" id="acct" hidden>
     <button class="side-btn" id="acctBtn" title="Your account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="txt" id="acctName"></span></button>
@@ -292,6 +304,42 @@
       </table>
     </section>
   </div></div>
+  <!-- ===================== Admin ===================== -->
+  <div id="pane-admin" role="tabpanel" aria-labelledby="tab-admin" hidden><div class="pane-inner">
+    <section class="panel" id="admUsersBox" hidden>
+      <div class="bar-head"><strong>Users</strong></div>
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody id="admUsers"></tbody>
+      </table>
+      <form class="adm-form" id="admAddUser" autocomplete="off">
+        <input type="text" id="auName" placeholder="New user's name" aria-label="Name">
+        <input type="password" id="auPass" placeholder="Password (8 or more characters)" autocomplete="new-password" aria-label="Password">
+        <select id="auRole" aria-label="Role"></select>
+        <button class="primary">Add user</button>
+      </form>
+      <div class="msg" id="admUsersMsg"></div>
+    </section>
+    <section class="panel" id="admRolesBox" hidden>
+      <div class="bar-head"><strong>Roles and permissions</strong><span class="note">Changes save as you tick. Admin always has everything.</span></div>
+      <div style="overflow-x:auto"><table class="matrix" id="admMatrix"></table></div>
+      <form class="adm-form" id="admAddRole" autocomplete="off">
+        <input type="text" id="arName" placeholder="New role's name" aria-label="Role name">
+        <button>Add role</button>
+      </form>
+      <div class="msg" id="admRolesMsg"></div>
+    </section>
+    <section class="panel" id="admSeriesBox" hidden>
+      <div class="bar-head"><strong>Series</strong>
+        <input type="text" id="asFilter" placeholder="Filter series…" aria-label="Filter series" style="max-width:260px"></div>
+      <table>
+        <thead><tr><th>Name</th><th>Folder</th><th>Books</th><th></th></tr></thead>
+        <tbody id="admSeries"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table>
+      <div class="msg" id="admSeriesMsg"></div>
+    </section>
+  </div></div>
+
   <!-- ===================== Library (cbz-shelf, framed) ===================== -->
   <div id="pane-library" role="tabpanel" aria-labelledby="tab-library" hidden>
     <iframe id="libFrame" title="Library" allow="fullscreen"></iframe>
@@ -299,6 +347,19 @@
 </main>
 
 <!-- ===================== Folder picker ===================== -->
+<dialog id="seriesEditDlg" aria-labelledby="seTitle">
+  <div class="dlg-head"><strong id="seTitle" style="flex:1">Edit series</strong><button type="button" class="link" id="seClose">Close</button></div>
+  <div class="dlg-body">
+    <label for="seName">Name</label><input type="text" id="seName">
+    <label for="seAuthors">Authors</label><input type="text" id="seAuthors" placeholder="Comma-separated">
+    <label for="seTags">Tags</label><input type="text" id="seTags" placeholder="Comma-separated">
+    <label for="seSummary">Summary</label><textarea id="seSummary" style="font:inherit"></textarea>
+    <div class="note" style="margin-top:6px">Everyone sees these. Empty a field to go back to the folder name and the books' own details.</div>
+    <div class="msg" id="seMsg"></div>
+  </div>
+  <div class="dlg-foot"><span class="note mono" id="seFolder"></span><button class="primary" id="seSave">Save</button></div>
+</dialog>
+
 <dialog id="acctDlg" aria-labelledby="acctTitle">
   <div class="dlg-head"><strong id="acctTitle" style="flex:1">Account</strong><button type="button" class="link" id="acctClose">Close</button></div>
   <div class="dlg-body">
@@ -382,10 +443,43 @@ function showTab(name) {
   }
   // The library loads the first time its tab opens, not with every harbor page view.
   if (name === "library" && !$("libFrame").src) $("libFrame").src = "/library";
+  if (name === "admin") setTimeout(() => loadAdminSeries());  // after the script has fully loaded
   store.set("tab", name);
 }
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
-showTab(["download", "library"].includes(store.get("tab")) ? store.get("tab") : "convert");
+showTab(["download", "library", "admin"].includes(store.get("tab")) ? store.get("tab") : "convert");
+if (store.get("tab") === "admin") $("tab-admin").hidden = false;
+
+/* ---------- permissions ---------- */
+// Without accounts there is no account in the state: everything is allowed.
+let perms = null;
+const has = p => perms === null || perms.includes(p);
+const TAB_NEEDS = {
+  convert: () => has("convert"),
+  download: () => has("download"),
+  library: () => has("library.read"),
+  admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit")),
+};
+function applyPerms(next) {
+  next = next ?? null;
+  if (JSON.stringify(next) === JSON.stringify(perms)) return;
+  perms = next;
+  for (const [tab, ok] of Object.entries(TAB_NEEDS)) $("tab-" + tab).hidden = !ok();
+  const current = document.querySelector('.tab[aria-selected="true"]')?.dataset.tab;
+  if (!current || !TAB_NEEDS[current]()) {
+    const first = Object.keys(TAB_NEEDS).find(t => TAB_NEEDS[t]());
+    if (first) showTab(first);
+  }
+  for (const id of ["pause", "cancelAll", "clear", "dlPause", "dlCancelAll", "dlClear"]) $(id).hidden = !has("jobs.see_all");
+  $("del").disabled = !has("delete_original");
+  if (!has("delete_original")) $("del").checked = false;
+  $("dlConvert").disabled = !has("convert");
+  if (!has("convert")) $("dlConvert").checked = false;
+  $("admUsersBox").hidden = !has("users.manage") || perms === null;
+  $("admRolesBox").hidden = !(has("users.manage") || has("roles.manage")) || perms === null;
+  $("admSeriesBox").hidden = !has("library.edit") || perms === null;
+  if (!$("pane-admin").hidden) loadAdminSeries();
+}
 
 /* ---------- sidebar ---------- */
 function setNarrow(on) {
@@ -640,7 +734,140 @@ function render(st) {
   renderConvert(st);
   renderDownloads(st);
   renderAccount(st.account);
+  applyPerms(st.account ? st.account.perms : null);
+  renderAdmin(st);
 }
+
+/* ---------- admin ---------- */
+let admUsers = "", admRoles = "";
+function renderAdmin(st) {
+  const users = st.admin_users || [], roles = st.admin_roles || [], perm = st.permissions || [];
+  const uKey = JSON.stringify([users, roles]), rKey = JSON.stringify([roles, perm, perms]);
+  if (uKey !== admUsers && !$("admUsers").contains(document.activeElement)) {
+    admUsers = uKey;
+    const roleOpts = sel => roles.map(r => `<option value="${r.id}"${r.id === sel ? " selected" : ""}${r.perms.every(has) ? "" : " disabled"}>${esc(r.name)}</option>`).join("");
+    $("admUsers").innerHTML = users.map(u => {
+      const me = account && u.name === account.name;
+      return `<tr><td>${esc(u.name)}${me ? ' <span class="note">(you)</span>' : ""}</td>
+        <td><select data-user-role="${u.id}" aria-label="Role of ${esc(u.name)}">${roleOpts(u.role_id)}</select></td>
+        <td>${u.disabled ? '<span class="state s-cancelled">disabled</span>' : '<span class="state s-done">active</span>'}</td>
+        <td class="actions"><button class="small" data-user-pw="${u.id}">Reset password</button>
+          ${me ? "" : `<button class="small" data-user-dis="${u.id}" data-to="${!u.disabled}">${u.disabled ? "Enable" : "Disable"}</button>
+          <button class="small" data-user-rm="${u.id}" data-name="${esc(u.name)}">Remove</button>`}</td></tr>`;
+    }).join("") || `<tr><td colspan="4" class="empty">No users.</td></tr>`;
+    const keep = $("auRole").value;
+    $("auRole").innerHTML = roleOpts(roles.find(r => r.name === "Member")?.id);
+    if (keep) $("auRole").value = keep;
+  }
+  if (rKey !== admRoles && !$("admMatrix").contains(document.activeElement)) {
+    admRoles = rKey;
+    const editable = has("roles.manage");
+    $("admMatrix").innerHTML = `<thead><tr><th>Permission</th>${roles.map(r => `<th><span class="rname">${esc(r.name)}</span>
+        <span class="note">${r.members} member${r.members === 1 ? "" : "s"}</span>
+        ${!r.locked && editable ? `<br><button class="link small" data-role-rename="${r.id}">Rename</button><button class="link small" data-role-rm="${r.id}">Remove</button>` : ""}</th>`).join("")}</tr></thead>
+      <tbody>${perm.map(p => `<tr><td>${esc(p.label)}<br><span class="note mono">${esc(p.key)}</span></td>${roles.map(r =>
+        `<td><input type="checkbox" data-role="${r.id}" data-perm="${p.key}" aria-label="${esc(r.name)}: ${esc(p.label)}"${r.perms.includes(p.key) ? " checked" : ""}${r.locked || !editable || !has(p.key) || !r.perms.every(has) ? " disabled" : ""}></td>`).join("")}</tr>`).join("")}</tbody>`;
+    $("admAddRole").hidden = !editable;
+  }
+  window._admRoles = roles;
+}
+async function admin(action, body, msgEl) {
+  try { const r = await api("/api/admin/" + action, body); refresh(); return r; }
+  catch (e) { say(msgEl, e.message, true); admUsers = admRoles = ""; refresh(); throw e; }
+}
+$("admUsers").onchange = async e => {
+  const s = e.target.closest("[data-user-role]");
+  if (s) { say($("admUsersMsg"), ""); await admin("user-role", { id: +s.dataset.userRole, role_id: +s.value }, $("admUsersMsg")).catch(() => {}); s.blur(); }
+};
+$("admUsers").onclick = async e => {
+  const pw = e.target.closest("[data-user-pw]"), dis = e.target.closest("[data-user-dis]"), rm = e.target.closest("[data-user-rm]");
+  say($("admUsersMsg"), "");
+  if (pw) {
+    const p = prompt("New password for this user (8 or more characters). They'll be signed out everywhere.");
+    if (p) await admin("user-password", { id: +pw.dataset.userPw, password: p }, $("admUsersMsg")).then(() => say($("admUsersMsg"), "Password changed.")).catch(() => {});
+  }
+  if (dis) await admin("user-disable", { id: +dis.dataset.userDis, disabled: dis.dataset.to === "true" }, $("admUsersMsg")).catch(() => {});
+  if (rm && confirm(`Remove ${rm.dataset.name}? Their account goes; their reading progress stays in the library database.`)) {
+    await admin("user-remove", { id: +rm.dataset.userRm }, $("admUsersMsg")).catch(() => {});
+  }
+};
+$("admAddUser").onsubmit = async e => {
+  e.preventDefault();
+  say($("admUsersMsg"), "");
+  try {
+    const u = await admin("user-add", { name: $("auName").value, password: $("auPass").value, role_id: +$("auRole").value }, $("admUsersMsg"));
+    $("auName").value = $("auPass").value = "";
+    say($("admUsersMsg"), `Added ${u.name} (${u.role}).`);
+  } catch {}
+};
+$("admMatrix").onchange = async e => {
+  const c = e.target.closest("[data-role]");
+  if (!c) return;
+  const role = (window._admRoles || []).find(r => r.id === +c.dataset.role);
+  const next = new Set(role.perms);
+  if (c.checked) next.add(c.dataset.perm); else next.delete(c.dataset.perm);
+  say($("admRolesMsg"), "");
+  await admin("role-update", { id: role.id, perms: [...next] }, $("admRolesMsg")).catch(() => {});
+  c.blur();
+};
+$("admMatrix").onclick = async e => {
+  const rn = e.target.closest("[data-role-rename]"), rm = e.target.closest("[data-role-rm]");
+  const role = (window._admRoles || []).find(r => r.id === +(rn || rm)?.dataset[rn ? "roleRename" : "roleRm"]);
+  if (!role) return;
+  say($("admRolesMsg"), "");
+  if (rn) { const name = prompt("New name for this role:", role.name); if (name) await admin("role-update", { id: role.id, name }, $("admRolesMsg")).catch(() => {}); }
+  if (rm && confirm(`Remove the ${role.name} role?`)) await admin("role-remove", { id: role.id }, $("admRolesMsg")).catch(() => {});
+};
+$("admAddRole").onsubmit = async e => {
+  e.preventDefault();
+  say($("admRolesMsg"), "");
+  try { await admin("role-add", { name: $("arName").value, perms: [] }, $("admRolesMsg")); $("arName").value = ""; } catch {}
+};
+
+let adminSeries = [], seOpen = null;
+async function loadAdminSeries() {
+  if ($("admSeriesBox").hidden) return;
+  try {
+    adminSeries = (await api("/api/library/series?limit=200&sort=name")).items;
+    renderAdminSeries();
+  } catch (e) { say($("admSeriesMsg"), e.message, true); }
+}
+function renderAdminSeries() {
+  const f = $("asFilter").value.trim().toLowerCase();
+  const rows = adminSeries.filter(s => !f || s.name.toLowerCase().includes(f) || s.folder.toLowerCase().includes(f));
+  $("admSeries").innerHTML = rows.map(s => `<tr><td>${esc(s.name)}</td><td class="name"><span class="dir">${esc(s.folder)}</span></td>
+    <td>${s.books}</td><td><button class="small" data-series-edit="${s.id}">Edit</button></td></tr>`).join("")
+    || `<tr><td colspan="4" class="empty">No series${f ? " match" : " yet"}.</td></tr>`;
+}
+$("asFilter").oninput = renderAdminSeries;
+$("admSeries").onclick = async e => {
+  const b = e.target.closest("[data-series-edit]");
+  if (!b) return;
+  try { seOpen = await api("/api/library/series-detail?id=" + b.dataset.seriesEdit); } catch (err) { return say($("admSeriesMsg"), err.message, true); }
+  const u = seOpen.user || {}, list = v => (Array.isArray(v) ? v.join(", ") : v || "");
+  $("seTitle").textContent = `Edit series: ${seOpen.name}`;
+  $("seName").value = u.name || ""; $("seName").placeholder = seOpen.file_name;
+  $("seAuthors").value = list(u.authors); $("seAuthors").placeholder = list(seOpen.authors);
+  $("seTags").value = list(u.tags); $("seTags").placeholder = list(seOpen.tags);
+  $("seSummary").value = u.summary || "";
+  $("seFolder").textContent = seOpen.folder;
+  say($("seMsg"), "");
+  $("seriesEditDlg").showModal();
+};
+$("seClose").onclick = () => $("seriesEditDlg").close();
+$("seSave").onclick = async () => {
+  const changes = {};
+  for (const [f, id] of [["name", "seName"], ["authors", "seAuthors"], ["tags", "seTags"], ["summary", "seSummary"]]) {
+    const v = $(id).value.trim();
+    changes[f] = v === "" ? null : v;
+  }
+  try {
+    await api("/api/library/edit-series", { id: seOpen.id, changes });
+    $("seriesEditDlg").close();
+    loadAdminSeries();
+    if ($("libFrame").src) $("libFrame").contentWindow?.location.reload();
+  } catch (e) { say($("seMsg"), e.message, true); }
+};
 
 /* ---------- account ---------- */
 let account = null;

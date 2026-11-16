@@ -38,10 +38,29 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
 | `harbor user disable NAME` / `enable NAME` | Stops or allows signing in. Disabling ends the account's sessions and extension tokens |
 | `harbor user remove NAME` | Deletes the account |
 
-The last admin who can sign in can't be disabled or removed. Each user has their own reading progress, Continue reading and favourites in the Library tab. Book and series details are shared. Reading progress from before accounts existed goes to the first admin when harbor starts.
+| `harbor user role NAME ROLE` | Gives an account another role |
+| `harbor user roles` | Lists roles and their permissions |
+
+`harbor user add` takes `--role NAME` (default Member). The last admin who can sign in can't be disabled, removed or given another role. Each user has their own reading progress, Continue reading, favourites and reader settings in the Library tab. Book and series details are shared. Reading progress from before accounts existed goes to the first admin when harbor starts.
 
 - **Signing in:** a signed-out visit goes to the sign-in page. A session lasts `HARBOR_SESSION_DAYS` (30) days after it was last used. After 5 wrong passwords for a name, that name is locked for 15 minutes.
 - **Your account** (bottom of the sidebar): change your password, which signs out your other browsers, make tokens for the Chrome extension, and sign out.
+- **Roles:** every account has one. Admin has every permission and can't be changed. Member (convert, download, delete originals, read the library) and Reader (read the library) come built in, and admins can add more. Tabs and buttons you can't use are hidden, and harbor refuses them anyway.
+
+  | Permission | Lets you |
+  |---|---|
+  | `convert` | Queue conversions, and convert downloads |
+  | `download` | Queue downloads |
+  | `delete_original` | Delete the original `.zip` after converting. Without it, that box is off |
+  | `library.read` | Use the Library tab: read, favourites, your own progress and reader settings |
+  | `library.edit` | Edit book and series details, which everyone sees |
+  | `library.manage` | Add and remove library folders, rescan, forget missing books |
+  | `jobs.see_all` | See and manage everyone's jobs, and pause, cancel all or clear finished. Without it you see only your own |
+  | `users.manage` | The Admin tab's Users section |
+  | `roles.manage` | The Admin tab's roles and permissions matrix |
+
+  The folder browser needs `convert`, `download` or `library.manage`. Someone who manages users or roles but isn't an admin can only hand out permissions they have themselves, so they can't make anyone (or themselves) an admin.
+- **Admin tab:** Users (add, change role, reset password, disable, remove), the roles × permissions matrix, and Series (rename and edit the shared details of any series).
 - **What's stored:** passwords as salted scrypt hashes, and only hashes of session ids and tokens, in `HARBOR_ACCOUNTS_DB` (`~/.local/share/harbor/harbor.db`, readable only by you).
 - **What it protects:** harbor still listens only on `127.0.0.1`. Accounts keep people who share this computer's browser apart. They don't protect against someone who can read your files in WSL.
 

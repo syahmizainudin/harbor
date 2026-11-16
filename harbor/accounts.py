@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import secrets
 import sqlite3
 import threading
@@ -55,7 +56,41 @@ CREATE TABLE IF NOT EXISTS tokens (
     created_at REAL NOT NULL, last_used REAL);
 """
 # Later schema changes go here, one step each, run once in order (PRAGMA user_version counts them).
-MIGRATIONS: list[str] = []
+# Statements are split on semicolons, so none may appear inside one.
+MIGRATIONS: list[str] = [
+    # 1: roles. Admin (id 1) is locked and always has every permission. Accounts made with
+    # --admin become Admin, the others Member.
+    """CREATE TABLE roles (
+           id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+           perms_json TEXT NOT NULL DEFAULT '[]', locked INTEGER NOT NULL DEFAULT 0);
+       INSERT INTO roles(id, name, perms_json, locked) VALUES (1, 'Admin', '[]', 1);
+       INSERT INTO roles(id, name, perms_json) VALUES
+           (2, 'Member', '["convert", "download", "delete_original", "library.read"]');
+       INSERT INTO roles(id, name, perms_json) VALUES (3, 'Reader', '["library.read"]');
+       ALTER TABLE users ADD COLUMN role_id INTEGER NOT NULL DEFAULT 2;
+       UPDATE users SET role_id = 1 WHERE is_admin = 1""",
+]
+ADMIN_ROLE, MEMBER_ROLE = 1, 2
+
+# Every permission, in the order the admin page shows them. Admin always has all of them.
+PERMISSIONS = [
+    ("convert", "Convert archives"),
+    ("download", "Download files"),
+    ("delete_original", "Delete the original .zip after converting"),
+    ("library.read", "Read the library"),
+    ("library.edit", "Edit book and series details"),
+    ("library.manage", "Manage library folders and scans"),
+    ("jobs.see_all", "See and manage everyone's jobs"),
+    ("users.manage", "Manage users"),
+    ("roles.manage", "Manage roles and permissions"),
+]
+ALL_PERMS = frozenset(p for p, _ in PERMISSIONS)
+
+
+def clean_perms(perms) -> list[str]:
+    if not isinstance(perms, list) or any(p not in ALL_PERMS for p in perms):
+        raise ValueError(f"permissions must be a list of: {', '.join(sorted(ALL_PERMS))}")
+    return [p for p, _ in PERMISSIONS if p in perms]
 
 
 def default_accounts_db() -> Path:
@@ -157,38 +192,128 @@ class Accounts:
             return self._db.execute(sql, args).rowcount
 
     # ------------------------------------------------------------ users
+    USER_SQL = """SELECT u.*, r.name AS role, r.perms_json, r.locked FROM users u
+                  LEFT JOIN roles r ON r.id = u.role_id"""
+
     @staticmethod
     def _public(r: sqlite3.Row) -> dict:
+        perms = sorted(ALL_PERMS) if r["locked"] else json.loads(r["perms_json"] or "[]")
         return {
             "id": r["id"],
             "name": r["name"],
-            "admin": bool(r["is_admin"]),
+            "admin": r["role_id"] == ADMIN_ROLE,
             "disabled": bool(r["disabled"]),
+            "role_id": r["role_id"],
+            "role": r["role"],
+            "perms": perms,
         }
 
     def count(self) -> int:
         return self._q("SELECT count(*) FROM users")[0][0]
 
     def users(self) -> list[dict]:
-        return [self._public(r) for r in self._q("SELECT * FROM users ORDER BY lower(name)")]
+        return [self._public(r) for r in self._q(f"{self.USER_SQL} ORDER BY lower(u.name)")]
 
     def get(self, name: str) -> dict:
-        rows = self._q("SELECT * FROM users WHERE name = ?", (name.strip(),))
+        rows = self._q(f"{self.USER_SQL} WHERE u.name = ?", (name.strip(),))
         if not rows:
             raise KeyError(f"no user {name!r}")
         return self._public(rows[0])
 
-    def add(self, name: str, password: str, admin: bool = False) -> dict:
+    def get_id(self, user_id: int) -> dict:
+        rows = self._q(f"{self.USER_SQL} WHERE u.id = ?", (int(user_id),))
+        if not rows:
+            raise KeyError(f"no user {user_id}")
+        return self._public(rows[0])
+
+    def add(self, name: str, password: str, admin: bool = False, role: int | str | None = None) -> dict:
         name, password = check_name(name), check_new_password(password)
+        role_id = ADMIN_ROLE if admin else self.role(role)["id"] if role is not None else MEMBER_ROLE
         try:
             with self._lock:
-                uid = self._db.execute(
-                    "INSERT INTO users(name, pass_hash, is_admin, created_at) VALUES (?,?,?,?)",
-                    (name, hash_password(password), int(admin), time.time()),
-                ).lastrowid
+                self._db.execute(
+                    "INSERT INTO users(name, pass_hash, is_admin, role_id, created_at) VALUES (?,?,?,?,?)",
+                    (name, hash_password(password), int(role_id == ADMIN_ROLE), role_id, time.time()),
+                )
         except sqlite3.IntegrityError:
             raise ValueError(f"there is already a user called {name!r}") from None
-        return self.get(name) | {"id": uid}
+        return self.get(name)
+
+    def set_role(self, name: str, role: int | str) -> dict:
+        user, target = self.get(name), self.role(role)
+        if (
+            user["admin"]
+            and target["id"] != ADMIN_ROLE
+            and not user["disabled"]
+            and self._active_admins() <= 1
+        ):
+            raise ValueError("this is the only admin who can sign in; make another admin first")
+        with self._lock:
+            self._db.execute(
+                "UPDATE users SET role_id = ?, is_admin = ? WHERE id = ?",
+                (target["id"], int(target["id"] == ADMIN_ROLE), user["id"]),
+            )
+        return self.get(name)
+
+    # ------------------------------------------------------------ roles
+    def roles(self) -> list[dict]:
+        rows = self._q(
+            """SELECT r.*, (SELECT count(*) FROM users u WHERE u.role_id = r.id) AS members
+               FROM roles r ORDER BY r.id"""
+        )
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "locked": bool(r["locked"]),
+                "perms": sorted(ALL_PERMS) if r["locked"] else json.loads(r["perms_json"]),
+                "members": r["members"],
+            }
+            for r in rows
+        ]
+
+    def role(self, role: int | str) -> dict:
+        for r in self.roles():
+            if r["id"] == role or (isinstance(role, str) and r["name"].lower() == role.strip().lower()):
+                return r
+        raise KeyError(f"no role {role!r}")
+
+    def add_role(self, name: str, perms: list[str]) -> dict:
+        name = check_name(name)
+        try:
+            with self._lock:
+                rid = self._db.execute(
+                    "INSERT INTO roles(name, perms_json) VALUES (?, ?)",
+                    (name, json.dumps(clean_perms(perms))),
+                ).lastrowid
+        except sqlite3.IntegrityError:
+            raise ValueError(f"there is already a role called {name!r}") from None
+        return self.role(rid)
+
+    def update_role(self, role_id: int, name: str | None = None, perms: list[str] | None = None) -> dict:
+        r = self.role(int(role_id))
+        if r["locked"]:
+            raise ValueError("the Admin role always has every permission and can't be changed")
+        try:
+            with self._lock:
+                if name is not None:
+                    self._db.execute("UPDATE roles SET name = ? WHERE id = ?", (check_name(name), r["id"]))
+                if perms is not None:
+                    self._db.execute(
+                        "UPDATE roles SET perms_json = ? WHERE id = ?",
+                        (json.dumps(clean_perms(perms)), r["id"]),
+                    )
+        except sqlite3.IntegrityError:
+            raise ValueError(f"there is already a role called {name!r}") from None
+        return self.role(r["id"])
+
+    def remove_role(self, role_id: int) -> None:
+        r = self.role(int(role_id))
+        if r["locked"]:
+            raise ValueError("the Admin role can't be removed")
+        if r["members"]:
+            raise ValueError(f"{r['name']} still has {r['members']} member(s); give them another role first")
+        self._x("DELETE FROM roles WHERE id = ?", (r["id"],))
 
     def set_password(self, name: str, password: str, keep_session: str | None = None) -> None:
         """Change a password and end the user's other sessions (all of them unless ``keep_session``)."""
@@ -218,10 +343,10 @@ class Accounts:
         self._x("DELETE FROM users WHERE id = ?", (user["id"],))
 
     def _active_admins(self) -> int:
-        return self._q("SELECT count(*) FROM users WHERE is_admin = 1 AND disabled = 0")[0][0]
+        return self._q("SELECT count(*) FROM users WHERE role_id = ? AND disabled = 0", (ADMIN_ROLE,))[0][0]
 
     def first_admin(self) -> dict | None:
-        rows = self._q("SELECT * FROM users WHERE is_admin = 1 ORDER BY id LIMIT 1")
+        rows = self._q(f"{self.USER_SQL} WHERE u.role_id = ? ORDER BY u.id LIMIT 1", (ADMIN_ROLE,))
         return self._public(rows[0]) if rows else None
 
     # ------------------------------------------------------------ signing in
@@ -236,7 +361,7 @@ class Accounts:
         key, now = str(name or "").strip().lower(), time.time()
         with self._lock:
             self._check_lock(key, now)
-        rows = self._q("SELECT * FROM users WHERE name = ?", (str(name or "").strip(),))
+        rows = self._q(f"{self.USER_SQL} WHERE u.name = ?", (str(name or "").strip(),))
         stored = rows[0]["pass_hash"] if rows else _DUMMY_HASH
         ok = (
             verify_password(str(password or "")[:MAX_PASSWORD], stored)
@@ -274,7 +399,8 @@ class Accounts:
             return None
         now = time.time()
         rows = self._q(
-            """SELECT u.*, s.last_seen FROM sessions s JOIN users u ON u.id = s.user_id
+            """SELECT u.*, r.name AS role, r.perms_json, r.locked, s.last_seen
+               FROM sessions s JOIN users u ON u.id = s.user_id LEFT JOIN roles r ON r.id = u.role_id
                WHERE s.id_hash = ? AND s.expires_at > ? AND u.disabled = 0""",
             (_sha(sid), now),
         )
@@ -311,7 +437,8 @@ class Accounts:
         if not token or not token.startswith(TOKEN_PREFIX):
             return None
         rows = self._q(
-            """SELECT u.*, t.id AS tid, t.last_used FROM tokens t JOIN users u ON u.id = t.user_id
+            """SELECT u.*, r.name AS role, r.perms_json, r.locked, t.id AS tid, t.last_used
+               FROM tokens t JOIN users u ON u.id = t.user_id LEFT JOIN roles r ON r.id = u.role_id
                WHERE t.hash = ? AND u.disabled = 0""",
             (_sha(token),),
         )
@@ -343,6 +470,12 @@ class HarborSignIn:
     def public(self, method: str, path: str) -> bool:
         return (method, path) in self.PUBLIC
 
+    def allows(self, user, method: str, path: str) -> bool:
+        """Permissions on what the console server serves itself."""
+        from .perms import may_browse_folders
+
+        return may_browse_folders(user) if path == "/api/dirs" else True
+
     def user(self, headers) -> dict | None:
         token = headers.get(TOKEN_HEADER, "") if headers else ""
         if token:
@@ -373,6 +506,8 @@ class AccountAPI:
             "account": {
                 "name": me["name"],
                 "admin": me["admin"],
+                "role": me.get("role"),
+                "perms": me.get("perms", []),
                 "browser": bool(me.get("_sid")),
                 "tokens": self.accounts.tokens(me["id"]) if me.get("_sid") else [],
             }

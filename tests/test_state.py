@@ -68,6 +68,7 @@ class StoreTests(unittest.TestCase):
                     "delete_original": False,
                     "overwrite": False,
                     "method": 2,
+                    "owner": None,
                 }
             ],
         )

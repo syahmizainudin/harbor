@@ -22,6 +22,8 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/state.py` | `QueueStore`: saves unfinished jobs on every change, restores them at start-up through the queues' `add` |
 | `harbor/accounts.py` | `Accounts` (users, sessions, extension tokens), `HarborSignIn` (the server's `auth`), `AccountAPI` at `/api/account/` |
 | `harbor/login.html` | The sign-in page, served at `/login` |
+| `harbor/perms.py` | `GuardedQueueAPI` (permissions on the queue APIs), `JobOwners` (who queued each job), `can` |
+| `harbor/admin.py` | `AdminAPI` at `/api/admin/`: users and roles, with the no-escalation rule |
 | `docs/plan-users.md` | The plan for accounts, permissions and per-user settings, phase by phase |
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
@@ -72,6 +74,12 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - **Sign-in failures.** Wrong names and wrong passwords get the same answer, and an unknown name is checked against a dummy hash so timing doesn't tell. `LOCK_AFTER` failures for a name in `LOCK_WINDOW` lock it.
 - **Tokens** are for the Chrome extension (`X-Harbor-Token` header). A token can use the console but can't manage the account: no password change, no new tokens.
 - **No sign-up page.** The first account comes from `harbor user add NAME --admin`. The last enabled admin can't be disabled or removed.
+- **Permissions** (`accounts.PERMISSIONS`, fixed list; roles in the `roles` table, Admin id 1 locked with all of them). `current_user()["perms"]` holds the request user's. Where each is checked:
+  - `perms.GuardedQueueAPI` wraps ConvertAPI and DownloadAPI: `convert`/`download` to add, `delete_original` and `convert` for what an add would do afterwards, and own-jobs-only for cancel and retry without `jobs.see_all`, which also gates pause, cancel all and clear. `JobOwners` records who queued each job: API adds, the download → convert hand-off (`make_on_saved`), retries (they keep the original owner) and restores (`QueueStore` saves `owner`).
+  - cbz-shelf's `LibraryAPI(can=perms.can)`: `library.read`, `library.edit`, `library.manage`.
+  - `HarborSignIn.allows`: `/api/dirs` needs `convert`, `download` or `library.manage`.
+  - `admin.AdminAPI`: `users.manage` and `roles.manage`, with the no-escalation rule: a non-admin hands out, edits and acts on only what is within their own permissions.
+  - The page hides what you can't use (`applyPerms`), but the checks above are what count. A new action that changes something shared needs a permission check here, with a test in `tests/test_permissions.py`.
 - **Library data per user.** `LibraryAPI` gets `user_of=_user_id`. At start-up, `Library.give_user_data(0, first_admin)` hands pre-accounts progress and favourites to the first admin.
 - **Schema changes** go in `accounts.MIGRATIONS`, one step each; never drop user data.
 - **Tests** use a temp accounts database. Never point one at `~/.local/share/harbor/harbor.db`.

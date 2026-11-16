@@ -48,7 +48,7 @@ def check_after(after: dict) -> dict:
     }
 
 
-def make_on_saved(convert_queue: JobQueue, on_kept: Callable[[Path], None] | None = None):
+def make_on_saved(convert_queue: JobQueue, on_kept: Callable[[Path], None] | None = None, owners=None):
     """After a download is saved, queue it for conversion if it is an archive and asked for.
 
     ``on_kept(path)`` is called for a file that isn't converted (an .epub, or with conversion off),
@@ -70,6 +70,8 @@ def make_on_saved(convert_queue: JobQueue, on_kept: Callable[[Path], None] | Non
         if added:
             job.linked_id = added[0].id
             job.message = "saved; queued for conversion"
+            if owners is not None:  # the conversion belongs to whoever queued the download
+                owners.set("convert", added[0].id, owners.get("download", job.id))
 
     return on_saved
 
@@ -84,6 +86,7 @@ def build(
     on_change: Callable | None = None,
     on_convert_change: Callable | None = None,
     on_download_kept: Callable[[Path], None] | None = None,
+    owners=None,
 ) -> tuple[JobQueue, DownloadQueue]:
     """Start both queues, with downloads handing archives to the convert queue.
 
@@ -100,7 +103,7 @@ def build(
     convert_queue = JobQueue(workers=jobs, image_threads=image_threads, on_change=convert_changed).start()
     download_queue = DownloadQueue(
         workers=downloads,
-        on_saved=make_on_saved(convert_queue, on_download_kept),
+        on_saved=make_on_saved(convert_queue, on_download_kept, owners),
         check_after=check_after,
         timeout=timeout,
         retries=retries,
@@ -189,25 +192,44 @@ def serve_harbor(
     notes: list[str] | None = None,
     library: Library | None = None,
     accounts=None,
+    owners=None,
 ) -> ThreadingHTTPServer:
     """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
     with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab).
     With ``accounts``, everything but the sign-in page needs a signed-in user (``/api/account/``)."""
     from .accounts import AccountAPI, HarborSignIn
+    from .admin import AdminAPI
+    from .perms import GuardedQueueAPI, JobOwners, can
 
     settings = settings or Settings()
+    owners = owners if owners is not None else JobOwners()
     apis = {
-        "/api/": ConvertAPI(convert_queue, {"quality": settings.quality, "method": settings.method}),
-        "/api/download/": EnvKeyDownloadAPI(download_queue, settings.api_key),
+        "/api/": GuardedQueueAPI(
+            ConvertAPI(convert_queue, {"quality": settings.quality, "method": settings.method}),
+            convert_queue,
+            "convert",
+            owners,
+        ),
+        "/api/download/": GuardedQueueAPI(
+            EnvKeyDownloadAPI(download_queue, settings.api_key), download_queue, "download", owners
+        ),
         "/api/harbor/": HarborAPI(settings, notes),
     }
     pages = {}
     if library is not None:
-        apis["/api/library/"] = LibraryAPI(library, user_of=_user_id)
+        try:
+            apis["/api/library/"] = LibraryAPI(library, user_of=_user_id, can=can)
+        except TypeError:  # cbz-shelf < 0.4.0 (dependencies not reinstalled yet): no library permissions
+            print(
+                "harbor: WARNING: the installed cbz-shelf has no permissions; reinstall the dependencies",
+                flush=True,
+            )
+            apis["/api/library/"] = LibraryAPI(library, user_of=_user_id)
         pages["/library"] = LIBRARY_HTML
     auth = None
     if accounts is not None:
         apis["/api/account/"] = AccountAPI(accounts)
+        apis["/api/admin/"] = AdminAPI(accounts)
         pages["/login"] = LOGIN_HTML
         auth = HarborSignIn(accounts)
     extra = {"auth": auth} if auth else {}  # only when needed: works with a cbz-webp that predates sign-in

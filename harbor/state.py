@@ -36,9 +36,14 @@ class QueueStore:
         self.enabled = True
         self._lock = threading.Lock()
         self._queues: tuple[JobQueue, DownloadQueue] | None = None
+        self.owners = None  # perms.JobOwners: who queued each job, kept across restarts
 
-    def attach(self, convert_queue: JobQueue, download_queue: DownloadQueue) -> None:
+    def attach(self, convert_queue: JobQueue, download_queue: DownloadQueue, owners=None) -> None:
         self._queues = (convert_queue, download_queue)
+        self.owners = owners
+
+    def _owner(self, kind: str, job_id: int) -> int | None:
+        return self.owners.get(kind, job_id) if self.owners is not None else None
 
     # ------------------------------------------------------------ saving
     def on_change(self, _job=None) -> None:
@@ -57,6 +62,7 @@ class QueueStore:
                     "delete_original": j.delete_original,
                     "overwrite": j.overwrite,
                     "method": j.method,
+                    "owner": self._owner("convert", j.id),
                 }
                 for j in cq.jobs()
                 if j.state in ACTIVE
@@ -69,6 +75,7 @@ class QueueStore:
                     "auth_mode": j.auth.mode,
                     "auth_name": j.auth.name,
                     "filename": j.filename,
+                    "owner": self._owner("download", j.id),
                 }
                 for j in dq.jobs()
                 if j.state in ACTIVE
@@ -131,6 +138,9 @@ class QueueStore:
                     method=int(c.get("method", 4)),
                 )
                 restored += len(added)
+                for j in added:
+                    if self.owners is not None:
+                        self.owners.set("convert", j.id, c.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:
                 notes.append(f"not restored: conversion of {c.get('path', '?')}: {e}")
         for d in data.get("downloads", []):
@@ -146,6 +156,9 @@ class QueueStore:
                 auth = Auth(mode, api_key if mode != "none" else "", d.get("auth_name", ""))
                 added, _ = dq.add([d["url"]], d["dest_dir"], auth, after=d.get("after") or {})
                 restored += len(added)
+                for j in added:
+                    if self.owners is not None:
+                        self.owners.set("download", j.id, d.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:
                 notes.append(f"not restored: {d.get('url', '?')}: {e}")
         return restored

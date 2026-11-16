@@ -190,7 +190,12 @@ class SignInHttpTests(unittest.TestCase):
         sid = cookie.split(";")[0].split("=", 1)[1]
         self.assertEqual(self.req("GET", "/", cookie=sid)[0], 200)
         _, _, st = self.req("GET", "/api/state", cookie=sid)
-        self.assertEqual(st["account"], {"name": "Ann", "admin": True, "browser": True, "tokens": []})
+        acct = st["account"]
+        self.assertEqual(
+            (acct["name"], acct["admin"], acct["role"], acct["browser"], acct["tokens"]),
+            ("Ann", True, "Admin", True, []),
+        )
+        self.assertIn("users.manage", acct["perms"])
         self.assertNotIn(sid, json.dumps(st))
         self.assertNotIn("_sid", json.dumps(st))
 
@@ -285,9 +290,9 @@ class UserCliTests(unittest.TestCase):
         code, _, err = self.run_cli("add", "Cy", "--password-stdin", stdin="short\n")
         self.assertEqual(code, 2)
         self.assertIn("at least", err)
-        self.assertEqual(self.run_cli("list")[1], "Ann  (admin)\nBo\n")
+        self.assertEqual(self.run_cli("list")[1], "Ann  (Admin)\nBo  (Member)\n")
         self.assertEqual(self.run_cli("disable", "Bo")[0], 0)
-        self.assertIn("Bo  (disabled)", self.run_cli("list")[1])
+        self.assertIn("Bo  (Member, disabled)", self.run_cli("list")[1])
         self.assertEqual(self.run_cli("disable", "Ann")[0], 2)  # the only admin
         self.assertEqual(self.run_cli("passwd", "Bo", "--password-stdin", stdin="another one\n")[0], 0)
         self.assertEqual(self.run_cli("remove", "Bo")[0], 0)
