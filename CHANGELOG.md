@@ -9,6 +9,7 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 - The folder pickers (harbor's, and the Library's Folders window from cbz-shelf v0.1.1) keep one size instead of resizing as you browse. Scrollbars follow the dark theme.
 - **Sidebar:** the tabs move to a sidebar (**« Collapse** shrinks it to icons), and the open tab fills the window. While a book is open, the sidebar steps aside and the reader gets the whole window.
 - **EPUB books** in the Library (cbz-shelf 0.2.0): picture EPUBs in the comic reader, text EPUBs in a text reader with contents, text size, line width and Light, Sepia or Dark colours. `.epub` downloads are never converted.
+- Text EPUBs (cbz-shelf 0.2.1): tap the sides of the page, ‹ ›, ← → or swipe to turn a screen, and each chapter ends with a **Next** button.
 - A download kept as it is (an `.epub`, or with conversion off) that lands in a library folder joins the library right away.
 
 - **Chrome extension** (`extension/`): right-click links or pages to send them, and a popup that shows harbor's status, sends the current tab, and lists the page's links to pick from. A badge counts active jobs. Harbor accepts exactly the extension's fixed origin (`HARBOR_EXTENSION_ORIGINS` to change).
