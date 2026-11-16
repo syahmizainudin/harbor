@@ -25,6 +25,7 @@ from cbzwebp.jobqueue import DONE, FAILED, JobQueue
 from dlqueue.download import Auth
 from harbor import __version__, cli
 from harbor.app import build, check_after, make_on_saved, serve_harbor
+from harbor.config import Settings
 
 KEY = FileServer.KEY
 
@@ -128,7 +129,7 @@ class ConsoleTests(Base):
     def setUp(self):
         super().setUp()
         self.cq, self.dq = build(jobs=1, image_threads=2, downloads=1, timeout=10)
-        self.server = serve_harbor(0, self.cq, self.dq, {"quality": 80})
+        self.server = serve_harbor(0, self.cq, self.dq, Settings(quality=80))
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
@@ -170,8 +171,9 @@ class ConsoleTests(Base):
                 "downloads",
                 "downloads_paused",
                 "download_workers",
+                "harbor",
             },
-        )  # fmt: skip  (the page's JS reads exactly these keys)
+        )  # the page's JS reads exactly these keys
 
     def test_download_then_convert_through_the_api(self):
         body = {

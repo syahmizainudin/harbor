@@ -10,6 +10,7 @@ import webbrowser
 
 from . import __version__
 from .app import build, serve_harbor
+from .config import ConfigError, load_settings
 
 
 def _quality(v: str) -> int:
@@ -26,40 +27,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    u = sub.add_parser("ui", help="start the local web console")
-    u.add_argument("-p", "--port", type=int, default=8765, help="port on 127.0.0.1 (default 8765)")
-    u.add_argument(
-        "-q", "--quality", type=_quality, default=80, help="default WebP quality 1-100 (default 80)"
+    u = sub.add_parser(
+        "ui",
+        help="start the local web console",
+        description="Flags override environment variables, which override the .env file. "
+        "Without --env-file, harbor reads $HARBOR_ENV_FILE, ./.env or ~/.config/harbor/.env if present.",
     )
-    u.add_argument(
-        "-j", "--jobs", type=int, default=1, help="archives converted at the same time (default 1)"
-    )
+    # Defaults are None so a flag that wasn't given doesn't override the .env file.
+    u.add_argument("--env-file", help="settings file to read (default: see above)")
+    u.add_argument("-p", "--port", type=int, help="port on 127.0.0.1 (default 8765)")
+    u.add_argument("-q", "--quality", type=_quality, help="default WebP quality 1-100 (default 80)")
+    u.add_argument("-j", "--jobs", type=int, help="archives converted at the same time (default 1)")
     u.add_argument(
         "-t",
         "--threads",
         type=int,
-        default=os.cpu_count(),
-        help=f"image-encoding threads shared by all conversions (default {os.cpu_count()})",
+        help=f"image-encoding threads for all conversions (default {os.cpu_count()})",
     )
-    u.add_argument("-d", "--downloads", type=int, default=2, help="downloads at the same time (default 2)")
+    u.add_argument("-d", "--downloads", type=int, help="downloads at the same time (default 2)")
     u.add_argument("--open", action="store_true", help="open the console in a browser")
     return ap
 
 
 def cmd_ui(args) -> int:
-    if min(args.jobs, args.threads or 1, args.downloads) < 1:
-        print("harbor: --jobs, --threads and --downloads must be at least 1", file=sys.stderr)
-        return 2
-    cq, dq = build(jobs=args.jobs, image_threads=args.threads, downloads=args.downloads)
+    flags = {k: getattr(args, k) for k in ("port", "quality", "jobs", "threads", "downloads")}
     try:
-        server = serve_harbor(args.port, cq, dq, {"quality": args.quality})
+        for k in ("jobs", "threads", "downloads"):
+            if flags[k] is not None and flags[k] < 1:
+                raise ConfigError(f"--{k} must be at least 1")
+        settings = load_settings(flags, args.env_file)
+    except (ConfigError, OSError) as e:
+        print(f"harbor: {e}", file=sys.stderr)
+        return 2
+
+    cq, dq = build(jobs=settings.jobs, image_threads=settings.threads, downloads=settings.downloads)
+    try:
+        server = serve_harbor(settings.port, cq, dq, settings)
     except OSError as e:
-        print(f"harbor: cannot listen on 127.0.0.1:{args.port}: {e}", file=sys.stderr)
+        print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
         dq.shutdown()
         cq.shutdown()
         return 2
-    url = f"http://127.0.0.1:{args.port}/"
+    url = f"http://127.0.0.1:{settings.port}/"
     print(f"harbor console: {url}  (Ctrl+C to stop; running jobs are cancelled, originals kept)", flush=True)
+    if settings.source:
+        print(
+            f"settings from {settings.source}{' (includes an API key)' if settings.api_key else ''}",
+            flush=True,
+        )
 
     def stop(*_):
         raise KeyboardInterrupt

@@ -16,11 +16,14 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 
 | Path | What it is |
 |---|---|
-| `harbor/app.py` | `check_after` (validates a download's convert options), `make_on_saved` (the hand-off), `build` (starts both queues) and `serve_harbor` (mounts `ConvertAPI` at `/api/` and `DownloadAPI` at `/api/download/`) |
-| `harbor/ui.html` | The two-tab page: one file, CSS and JS inline, no external requests |
+| `harbor/app.py` | `check_after` (validates a download's convert options), `make_on_saved` (the hand-off), `build` (starts both queues) and `serve_harbor` (mounts `ConvertAPI` at `/api/`, `EnvKeyDownloadAPI` at `/api/download/` and `HarborAPI`, page defaults only, at `/api/harbor/`) |
+| `harbor/config.py` | Settings: `.env` parsing, file lookup, precedence (flag > environment > file > default), validation |
+| `harbor/ui.html` | The two-tab page: one file, CSS and JS inline (including the logo and favicon), no external requests |
+| `assets/logo.svg` | The logo. The page inlines it twice (header and favicon data URI); `LogoTests` checks they match |
+| `.env.example` | Every setting, commented. Real `.env` files are git-ignored |
 | `harbor/cli.py` | `harbor ui` |
 | `bin/harbor` | Runs the CLI from a checkout |
-| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
+| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
 | `ci/release_notes.py`, `.github/workflows/` | Release gate, CI and release pipelines, as in the other two repos |
 
 ## Where a change belongs
@@ -39,6 +42,9 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - The hand-off runs only after the download is complete and in place. A hand-off that fails (bad archive, duplicate) leaves the downloaded file where it is.
 - On shutdown, stop the download queue before the convert queue, so no download hands work to a converter that is stopping.
 - Never add the API key to `after`, a message or anything else that reaches `/api/state`.
+- The `.env` key (`HARBOR_API_KEY`) stays on the server. `Settings.page_defaults()` exposes only `has_key`, and `Settings` hides `api_key` from `repr`. `EnvKeyDownloadAPI` adds it only when the page sends a mode other than `none` with an empty key. Tests check that the key never shows up in `/api/state`.
+- Every setting goes through `config.VARS` with a validator. A bad value or a misspelled `HARBOR_` name stops startup with the file and setting named, rather than being silently ignored.
+- Never commit a `.env` or a real key. Never read the user's real `.env` in tests; `LoadSettingsTests` changes into a temp folder and redirects `Path.home()`.
 
 ## Never touch the user's real files while testing
 
@@ -63,6 +69,7 @@ To test against local checkouts of the two tools instead of the pinned tags: `pi
 - **Python 3.10+.** CI tests 3.10 through 3.14.
 - **The console stays local and guarded.** The guards live in the shared `serve` from cbz-webp. Don't add a handler here; add an action to an API object in the right tool instead.
 - **The page must work offline and in dark mode.** `render()` rewrites only stats and table bodies every second; keep forms and the folder-picker `<dialog>` outside those.
+- **To change the logo**, edit `assets/logo.svg`, then replace the inline `<svg>` in the page's `<h1>` and the favicon `href` (URL-encoded) with it. `LogoTests` fails until all three match.
 
 ## Releasing
 

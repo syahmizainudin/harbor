@@ -4,6 +4,10 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- A logo, shown in the page header and as the browser tab icon (`assets/logo.svg`).
+- Settings from a `.env` file: `--env-file`, `$HARBOR_ENV_FILE`, `./.env` or `~/.config/harbor/.env`. Covers the port, worker counts, Convert defaults, Download defaults and an API key. Flags override environment variables, which override the file. See `.env.example`.
+- An API key in `.env` (`HARBOR_API_KEY`) stays on the server. The page only knows one exists and uses it when its key field is left empty.
+
 ## 0.1.0
 
 First release.

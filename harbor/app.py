@@ -3,6 +3,7 @@
 All the queue, file and server logic lives in those two packages. Harbor adds only:
   * ``check_after``: validates the convert options sent with each download;
   * ``make_on_saved``: after a download, queues a downloaded .zip/.cbz for conversion;
+  * the API key and page defaults from its settings (``config.py``; the key stays here);
   * the two-tab page, and ``build`` / ``serve_harbor`` to wire it together.
 """
 
@@ -16,6 +17,9 @@ from cbzwebp.jobqueue import JobQueue
 from cbzwebp.web import ConvertAPI, serve
 from dlqueue.download import Download, DownloadQueue
 from dlqueue.web import DownloadAPI
+
+from . import __version__
+from .config import Settings
 
 UI_HTML = (Path(__file__).parent / "ui.html").read_bytes()
 
@@ -67,12 +71,42 @@ def build(
     return convert_queue, download_queue
 
 
+class EnvKeyDownloadAPI(DownloadAPI):
+    """DownloadAPI that uses the key from harbor's settings when the page sends none."""
+
+    def __init__(self, queue: DownloadQueue, api_key: str = ""):
+        super().__init__(queue)
+        self._api_key = api_key
+
+    def post(self, action: str, body: dict) -> tuple[int, dict]:
+        auth = body.get("auth")
+        if action == "add" and self._api_key and isinstance(auth, dict):
+            if auth.get("mode", "none") != "none" and not auth.get("key"):
+                body = {**body, "auth": {**auth, "key": self._api_key}}
+        return super().post(action, body)
+
+
+class HarborAPI:
+    """Page defaults from settings, at /api/harbor/ (state only; no actions)."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    def state(self) -> dict:
+        return {"harbor": {"version": __version__, **self.settings.page_defaults()}}
+
+    def post(self, action: str, body: dict) -> tuple[int, dict]:
+        return 404, {"error": "not found"}
+
+
 def serve_harbor(
-    port: int, convert_queue: JobQueue, download_queue: DownloadQueue, defaults: dict
+    port: int, convert_queue: JobQueue, download_queue: DownloadQueue, settings: Settings | None = None
 ) -> ThreadingHTTPServer:
-    """The two-tab page: convert at /api/, downloads at /api/download/."""
+    """The two-tab page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/."""
+    settings = settings or Settings()
     apis = {
-        "/api/": ConvertAPI(convert_queue, defaults),
-        "/api/download/": DownloadAPI(download_queue),
+        "/api/": ConvertAPI(convert_queue, {"quality": settings.quality}),
+        "/api/download/": EnvKeyDownloadAPI(download_queue, settings.api_key),
+        "/api/harbor/": HarborAPI(settings),
     }
     return serve(port, UI_HTML, apis, ARCHIVE_EXTS)

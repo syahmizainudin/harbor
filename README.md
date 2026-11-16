@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" width="96" alt="Harbor logo"></p>
+
 # harbor
 
 [![CI](https://github.com/syahmizainudin/harbor/actions/workflows/ci.yml/badge.svg)](https://github.com/syahmizainudin/harbor/actions/workflows/ci.yml)
@@ -25,15 +27,41 @@ That also installs cbz-webp and dl-queue at the versions pinned in `pyproject.to
 harbor ui --open        # http://127.0.0.1:8765/
 ```
 
-| Option | Default | Meaning |
-|---|---|---|
-| `-p`, `--port` | 8765 | Port on `127.0.0.1` |
-| `-q`, `--quality` | 80 | Default WebP quality shown on the Convert tab |
-| `-j`, `--jobs` | 1 | Archives converted at the same time |
-| `-t`, `--threads` | CPU count | Image-encoding threads, shared by all conversions |
-| `-d`, `--downloads` | 2 | Downloads at the same time |
+| Option | Setting in `.env` | Default | Meaning |
+|---|---|---|---|
+| `-p`, `--port` | `HARBOR_PORT` | 8765 | Port on `127.0.0.1` |
+| `-q`, `--quality` | `HARBOR_QUALITY` | 80 | Default WebP quality on the Convert tab |
+| `-j`, `--jobs` | `HARBOR_JOBS` | 1 | Archives converted at the same time |
+| `-t`, `--threads` | `HARBOR_THREADS` | CPU count | Image-encoding threads, shared by all conversions |
+| `-d`, `--downloads` | `HARBOR_DOWNLOADS` | 2 | Downloads at the same time |
+| | `HARBOR_DELETE_ORIGINAL` | `true` | Default for "Delete original .zip" |
+| | `HARBOR_DOWNLOAD_DIR` | | Default "Save to folder" on the Download tab |
+| | `HARBOR_AUTH_MODE` | `bearer` | Default for "API key sent as": `none`, `bearer`, `header` or `query` |
+| | `HARBOR_AUTH_NAME` | | Header or query parameter name, for `header` and `query` modes |
+| | `HARBOR_API_KEY` | | API key used when the page's key field is left empty |
+| `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
+
+## Settings file (`.env`)
+
+All settings are optional. Copy [`.env.example`](.env.example) to `.env` and fill in what you need. Harbor reads the first of these files that exists:
+
+1. the file given with `--env-file`
+2. the file named in `$HARBOR_ENV_FILE`
+3. `.env` in the folder you start harbor from
+4. `~/.config/harbor/.env`
+
+Without one, harbor uses its defaults. A command-line flag beats an environment variable, which beats the file. Harbor stops with a message naming the file and setting if a value is invalid or a `HARBOR_` name is misspelled. When it starts, it prints which file it used.
+
+The file is plain `KEY=value` lines. `#` starts a comment, values may be quoted, and `export` in front is allowed. Nothing in it is run or expanded.
+
+**The API key stays inside the harbor process.**
+- The page is only told that a key exists. It shows "Using the key from .env" and uses that key whenever the key field is left empty. A key typed into the page is used instead.
+- The key is never shown, never added to the queue state, and never stored in the browser.
+- `.env` files are git-ignored here. Keep it that way, and keep the file private (`chmod 600 .env`).
+
+Values in the file fill the Download tab's fields only when this browser hasn't remembered its own value. To go back to the file's values, clear the site's data in the browser.
 
 ## The page
 

@@ -5,3 +5,6 @@ build/
 dist/
 *.egg-info/
 .deps/
+.env
+.env.*
+!.env.example

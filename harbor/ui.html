@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Harbor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 64 64&quot; role=&quot;img&quot; aria-label=&quot;Harbor&quot;%3E%0A  %3Cdefs%3E%0A    %3ClinearGradient id=&quot;harbor-bg&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;%3E%0A      %3Cstop offset=&quot;0&quot; stop-color=&quot;%233b7cf0&quot;/%3E%0A      %3Cstop offset=&quot;1&quot; stop-color=&quot;%23173a86&quot;/%3E%0A    %3C/linearGradient%3E%0A  %3C/defs%3E%0A  %3Crect width=&quot;64&quot; height=&quot;64&quot; rx=&quot;14&quot; fill=&quot;url%28%23harbor-bg%29&quot;/%3E%0A  %3Cg fill=&quot;none&quot; stroke=&quot;%23ffffff&quot; stroke-width=&quot;4&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;%3E%0A    %3Ccircle cx=&quot;32&quot; cy=&quot;13&quot; r=&quot;5&quot;/%3E%0A    %3Cpath d=&quot;M32 18v28&quot;/%3E%0A    %3Cpath d=&quot;M23 25h18&quot;/%3E%0A    %3Cpath d=&quot;M15 34c1.5 8.5 8 13 17 13s15.5-4.5 17-13&quot;/%3E%0A    %3Cpath d=&quot;M10.5 38.5 15 33.5l5 4&quot;/%3E%0A    %3Cpath d=&quot;M53.5 38.5 49 33.5l-5 4&quot;/%3E%0A  %3C/g%3E%0A  %3Cpath d=&quot;M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0&quot; fill=&quot;none&quot; stroke=&quot;%239cc4ff&quot; stroke-width=&quot;3&quot; stroke-linecap=&quot;round&quot;/%3E%0A%3C/svg%3E">
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
@@ -22,6 +23,8 @@
          font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
   .sub { color: var(--muted); margin: 0 0 16px; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
   .tab { border: none; background: none; border-radius: 0; padding: 8px 14px; color: var(--muted); font-weight: 600;
@@ -98,7 +101,26 @@
 </head>
 <body>
 <main>
-  <h1>Harbor</h1>
+  <h1 class="brand">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Harbor">
+  <defs>
+    <linearGradient id="harbor-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b7cf0"/>
+      <stop offset="1" stop-color="#173a86"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#harbor-bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="13" r="5"/>
+    <path d="M32 18v28"/>
+    <path d="M23 25h18"/>
+    <path d="M15 34c1.5 8.5 8 13 17 13s15.5-4.5 17-13"/>
+    <path d="M10.5 38.5 15 33.5l5 4"/>
+    <path d="M53.5 38.5 49 33.5l-5 4"/>
+  </g>
+  <path d="M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0" fill="none" stroke="#9cc4ff" stroke-width="3" stroke-linecap="round"/>
+</svg>
+  Harbor</h1>
   <p class="sub">Recompress images inside .zip / .cbz archives to WebP and save them as .cbz, or download files and convert them as they arrive.</p>
 
   <div class="tabs" role="tablist">
@@ -179,6 +201,7 @@
             <button class="small" id="showKey" type="button">Show</button>
           </div>
           <label class="check" style="margin-top:6px"><input type="checkbox" id="rememberKey"> Remember the key in this browser</label>
+          <div class="note" id="envKeyNote" hidden style="margin-top:6px">Harbor has an API key from its .env file. Leave the field empty to use it, or type a key to use that one instead.</div>
         </div>
       </div>
 
@@ -349,6 +372,19 @@ $("authMode").value = store.get("authMode", "bearer");
 $("authName").value = store.get("authName", "");
 if (store.get("apiKey")) { $("apiKey").value = store.get("apiKey"); $("rememberKey").checked = true; }
 
+let envKey = false;
+function applyHarborDefaults(h) {
+  if (!h) return;
+  // .env values fill fields this browser hasn't remembered its own value for.
+  if (store.get("dest") === null && h.download_dir) $("dest").value = h.download_dir;
+  if (store.get("authMode") === null && h.auth_mode) $("authMode").value = h.auth_mode;
+  if (store.get("authName") === null && h.auth_name) $("authName").value = h.auth_name;
+  $("del").checked = !!h.delete_original;
+  envKey = !!h.has_key;
+  $("apiKey").placeholder = envKey ? "Using the key from .env" : "";
+  $("envKeyNote").hidden = !envKey;
+  authUI();
+}
 function authUI() {
   const m = $("authMode").value;
   $("authName").hidden = !(m === "header" || m === "query");
@@ -380,7 +416,7 @@ $("dlAdd").onclick = async () => {
   const mode = $("authMode").value;
   if (!urls.length) return say($("dlMsg"), "Enter at least one URL.", true);
   if (!dest) return say($("dlMsg"), "Choose a folder to save to.", true);
-  if (mode !== "none" && !$("apiKey").value) return say($("dlMsg"), "Enter the API key, or choose “No API key”.", true);
+  if (mode !== "none" && !$("apiKey").value && !envKey) return say($("dlMsg"), "Enter the API key, or choose “No API key”.", true);
   if ((mode === "header" || mode === "query") && !$("authName").value.trim())
     return say($("dlMsg"), `Enter the ${mode === "header" ? "header" : "parameter"} name.`, true);
   try {
@@ -480,7 +516,12 @@ function renderDownloads(st) {
 }
 
 function render(st) {
-  if (!defaultsSet) { $("qr").value = $("qn").value = st.defaults.quality; defaultsSet = true; convertNote(); }
+  if (!defaultsSet) {
+    $("qr").value = $("qn").value = st.defaults.quality;
+    applyHarborDefaults(st.harbor);
+    defaultsSet = true;
+    convertNote();
+  }
   renderConvert(st);
   renderDownloads(st);
 }
