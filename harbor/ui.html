@@ -22,20 +22,40 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .brand { display: flex; align-items: center; gap: 10px; }
+  /* Layout: a sidebar with the tabs, and the open tab filling the rest of the window. */
+  body { display: grid; grid-template-columns: auto 1fr; height: 100vh; overflow: hidden; }
+  nav.side { display: flex; flex-direction: column; gap: 4px; width: 200px; padding: 14px 10px; background: var(--panel);
+             border-right: 1px solid var(--line); overflow: auto; }
+  main { min-width: 0; overflow: auto; }
+  .pane-inner { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 18px; margin: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 4px; }
   .brand svg { width: 30px; height: 30px; flex: none; }
-  .sub { color: var(--muted); margin: 0 0 16px; }
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
-  .tab { border: none; background: none; border-radius: 0; padding: 8px 14px; color: var(--muted); font-weight: 600;
-         border-bottom: 2px solid transparent; margin-bottom: -1px; }
-  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  .sub { color: var(--muted); font-size: 12px; margin: 0 6px 14px; }
+  .tabs { display: flex; flex-direction: column; gap: 2px; }
+  .tab { display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 8px 10px; color: var(--muted);
+         font-weight: 600; text-align: left; }
+  .tab svg { width: 18px; height: 18px; flex: none; }
+  .tab:hover { background: var(--hover); filter: none; }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--chip); box-shadow: inset 3px 0 0 var(--accent); }
+  .tab .badge { margin-left: auto; }
+  .side-foot { margin-top: auto; }
+  #collapse { width: 100%; border: none; background: none; color: var(--muted); text-align: left; padding: 8px 10px; }
+  #collapse:hover { background: var(--hover); filter: none; }
+  /* Collapsed: icons only. */
+  body.narrow nav.side { width: 58px; }
+  body.narrow .brand span, body.narrow .sub, body.narrow .tab .txt, body.narrow #collapse .txt { display: none; }
+  body.narrow .tab .badge { position: absolute; margin: -16px 0 0 10px; }
+  body.narrow .tab { position: relative; justify-content: center; }
+  /* While a book is open, the reader gets the whole window. */
+  body.reading { grid-template-columns: 1fr; }
+  body.reading nav.side { display: none; }
+  #pane-library { height: 100%; }
   .badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 999px;
            background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 18px; text-align: center; }
   .badge:empty { display: none; }
   [hidden] { display: none !important; }
-  #libFrame { display: block; width: 100%; height: calc(100vh - 150px); min-height: 480px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  #libFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   label, .label { display: block; font-weight: 600; margin-bottom: 6px; }
   .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
@@ -103,6 +123,13 @@
   .dirlist li + li { border-top: 1px solid var(--line); }
   .dirlist .empty { padding: 16px; }
   @media (max-width: 720px) {
+    /* Small screens: the sidebar becomes a bar along the top. */
+    body, body.narrow { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    nav.side, body.narrow nav.side { width: auto; flex-direction: row; align-items: center; padding: 6px 8px;
+                                     border-right: none; border-bottom: 1px solid var(--line); }
+    .tabs { flex-direction: row; }
+    .sub, .side-foot, .brand span, body.narrow .tab .txt { display: none; }
+    body.narrow .tab .badge { position: static; margin: 0 0 0 6px; }
     thead { display: none; }
     tr { display: block; border-top: 1px solid var(--line); padding: 8px 0; }
     td { display: block; border: none; padding: 2px 0; }
@@ -110,8 +137,8 @@
 </style>
 </head>
 <body>
-<main>
-  <h1 class="brand">
+<nav class="side" aria-label="Harbor">
+  <h1 class="brand" title="Harbor">
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Harbor">
   <defs>
     <linearGradient id="harbor-bg" x1="0" y1="0" x2="0" y2="1">
@@ -130,17 +157,20 @@
   </g>
   <path d="M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0" fill="none" stroke="#9cc4ff" stroke-width="3" stroke-linecap="round"/>
 </svg>
-  Harbor</h1>
-  <p class="sub">Recompress images inside .zip / .cbz archives to WebP and save them as .cbz, or download files and convert them as they arrive.</p>
+  <span>Harbor</span></h1>
+  <p class="sub">Recompress .zip / .cbz archives to WebP .cbz, download files and convert them as they arrive, and read your library.</p>
 
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert">Convert<span class="badge" id="badge-convert"></span></button>
-    <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download">Download<span class="badge" id="badge-download"></span></button>
-    <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library">Library</button>
+  <div class="tabs" role="tablist" aria-orientation="vertical">
+    <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert" title="Convert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg><span class="txt">Convert</span><span class="badge" id="badge-convert"></span></button>
+    <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download" title="Download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span class="txt">Download</span><span class="badge" id="badge-download"></span></button>
+    <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library" title="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 15M3 20h18"/></svg><span class="txt">Library</span></button>
   </div>
+  <div class="side-foot"><button id="collapse" title="Collapse the sidebar"><span aria-hidden="true">«</span> <span class="txt">Collapse</span></button></div>
+</nav>
 
+<main>
   <!-- ===================== Convert ===================== -->
-  <div id="pane-convert" role="tabpanel" aria-labelledby="tab-convert">
+  <div id="pane-convert" role="tabpanel" aria-labelledby="tab-convert"><div class="pane-inner">
     <section class="panel">
       <div class="label-row">
         <label for="paths">Folders or archive files (one per line)</label>
@@ -181,10 +211,10 @@
         <tbody id="rows"><tr><td colspan="6" class="empty">Queue is empty.</td></tr></tbody>
       </table>
     </section>
-  </div>
+  </div></div>
 
   <!-- ===================== Download ===================== -->
-  <div id="pane-download" role="tabpanel" aria-labelledby="tab-download" hidden>
+  <div id="pane-download" role="tabpanel" aria-labelledby="tab-download" hidden><div class="pane-inner">
     <section class="panel">
       <label for="urls">File URLs (one per line)</label>
       <textarea id="urls" placeholder="https://example.com/files/Chapter%2001.zip"></textarea>
@@ -245,7 +275,7 @@
         <tbody id="dlRows"><tr><td colspan="5" class="empty">No downloads yet.</td></tr></tbody>
       </table>
     </section>
-  </div>
+  </div></div>
   <!-- ===================== Library (cbz-shelf, framed) ===================== -->
   <div id="pane-library" role="tabpanel" aria-labelledby="tab-library" hidden>
     <iframe id="libFrame" title="Library" allow="fullscreen"></iframe>
@@ -313,6 +343,21 @@ function showTab(name) {
 }
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
 showTab(["download", "library"].includes(store.get("tab")) ? store.get("tab") : "convert");
+
+/* ---------- sidebar ---------- */
+function setNarrow(on) {
+  document.body.classList.toggle("narrow", on);
+  $("collapse").firstElementChild.textContent = on ? "»" : "«";
+  $("collapse").title = on ? "Expand the sidebar" : "Collapse the sidebar";
+  store.set("narrow", on ? "1" : "");
+}
+$("collapse").onclick = () => setNarrow(!document.body.classList.contains("narrow"));
+setNarrow(store.get("narrow") === "1");
+// The library's reader says when a book opens or closes; the sidebar steps aside while it's open.
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || e.source !== $("libFrame").contentWindow) return;
+  if (e.data?.type === "shelf-reader") document.body.classList.toggle("reading", !!e.data.open);
+});
 
 /* ---------- folder picker ---------- */
 let pickerTarget = null, pickerCurrent = null;

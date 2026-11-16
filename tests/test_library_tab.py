@@ -70,6 +70,7 @@ class LibraryTabTests(unittest.TestCase):
         self.assertEqual(headers["X-Frame-Options"], "SAMEORIGIN")  # harbor's tab frames it
         status, _, body = self.get("/")
         self.assertIn(b'id="libFrame"', body)
+        self.assertIn(b'"shelf-reader"', body)  # hides the sidebar while the library's reader is open
         state = json.loads(self.get("/api/state")[2])
         self.assertEqual(state["library"]["roots"], 1)
         self.assertEqual(json.loads(self.get("/api/library/series")[2])["total"], 0)
