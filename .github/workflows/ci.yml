@@ -67,10 +67,18 @@ jobs:
           python -m venv /tmp/smoke
           /tmp/smoke/bin/pip install dist/*.whl
           /tmp/smoke/bin/harbor --version
+          export HARBOR_ACCOUNTS_DB=/tmp/smoke-accounts.db
+          echo "smoke-test-pw" | /tmp/smoke/bin/harbor user add ci --admin --password-stdin
           /tmp/smoke/bin/harbor ui -p 8902 &
-          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8902/api/state > /tmp/state.json && break; sleep 0.25; done
-          python -c "import json; s = json.load(open('/tmp/state.json')); assert {'jobs', 'downloads'} <= set(s), s"
-          curl -sf http://127.0.0.1:8902/ | grep -q "<title>Harbor</title>"
+          B=http://127.0.0.1:8902
+          for i in $(seq 1 40); do curl -sf $B/login > /dev/null && break; sleep 0.25; done
+          # Signed out: only the sign-in page.
+          test "$(curl -s -o /dev/null -w '%{http_code}' $B/api/state)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' $B/)" = 303
+          curl -sf -c /tmp/jar -H 'Content-Type: application/json' -d '{"name":"ci","password":"smoke-test-pw"}' $B/api/account/login
+          curl -sf -b /tmp/jar $B/api/state > /tmp/state.json
+          python -c "import json; s = json.load(open('/tmp/state.json')); assert {'jobs', 'downloads', 'account'} <= set(s), s"
+          curl -sf -b /tmp/jar $B/ | grep -q "<title>Harbor</title>"
           kill %1
       - uses: actions/upload-artifact@v5
         with:
