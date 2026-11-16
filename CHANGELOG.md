@@ -6,6 +6,7 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 - **Your own defaults:** Convert and Download settings (quality, effort, delete original, download folder, auth mode and name, convert downloads) are saved per account as you change them, and `/api/state` gives each user theirs, so the Chrome extension uses them too. **Account → Go back to harbor's defaults** clears them. The API key stays server-wide.
 - Text reader settings are saved per account (cbz-shelf 0.4.1).
+- Pins cbz-shelf 0.4.1.
 - **Roles and permissions:** Admin (everything, locked), Member and Reader built in, and more from the Admin tab. Nine permissions, from converting to managing roles. Without `jobs.see_all` you see and manage only your own jobs. Downloads hand their owner on to the conversion, and saved jobs keep it across restarts. `harbor user add --role`, `harbor user role`, `harbor user roles`.
 - **Admin tab:** users (add, role, reset password, disable, remove), the roles × permissions matrix, and series editing. Nobody can hand out permissions they don't have.
 - Reader settings are per user (cbz-shelf 0.4.0). The folder browser needs a permission (cbz-webp and dl-queue 0.4.1).
