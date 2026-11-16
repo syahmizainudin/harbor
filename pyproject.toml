@@ -10,9 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 # Pinned by tag. To pick up a fix in either tool, release it there and bump the tag here.
 dependencies = [
-  "cbz-webp @ git+https://github.com/syahmizainudin/cbz-webp@v0.3.0",
-  "dl-queue @ git+https://github.com/syahmizainudin/dl-queue@v0.3.0",
-  "cbz-shelf @ git+https://github.com/syahmizainudin/cbz-shelf@v0.3.0",
+  "cbz-webp @ git+https://github.com/syahmizainudin/cbz-webp@v0.4.0",
+  "dl-queue @ git+https://github.com/syahmizainudin/dl-queue@v0.4.0",
+  "cbz-shelf @ git+https://github.com/syahmizainudin/cbz-shelf@v0.3.2",
 ]
 
 [project.scripts]
