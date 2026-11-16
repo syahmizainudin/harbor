@@ -7,6 +7,7 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 - **Roles and permissions:** Admin (everything, locked), Member and Reader built in, and more from the Admin tab. Nine permissions, from converting to managing roles. Without `jobs.see_all` you see and manage only your own jobs. Downloads hand their owner on to the conversion, and saved jobs keep it across restarts. `harbor user add --role`, `harbor user role`, `harbor user roles`.
 - **Admin tab:** users (add, role, reset password, disable, remove), the roles × permissions matrix, and series editing. Nobody can hand out permissions they don't have.
 - Reader settings are per user (cbz-shelf 0.4.0). The folder browser needs a permission (cbz-webp and dl-queue 0.4.1).
+- Pins cbz-webp 0.4.1, dl-queue 0.4.1 and cbz-shelf 0.4.0.
 - **Accounts:** everyone signs in. Make accounts with `harbor user add NAME [--admin]`, and manage them with `passwd`, `list`, `disable`, `enable` and `remove`. Passwords are scrypt hashes. Sessions are an `HttpOnly; SameSite=Strict` cookie that lasts `HARBOR_SESSION_DAYS`. Repeated wrong passwords lock a name for 15 minutes. Settings: `HARBOR_ACCOUNTS`, `HARBOR_ACCOUNTS_DB`, `HARBOR_SESSION_DAYS`, `HARBOR_SECURE_COOKIE`.
 - **Your account** at the bottom of the sidebar: change your password, make and revoke Chrome extension tokens, sign out.
 - Library progress, Continue reading and favourites are per user. Progress from before accounts goes to the first admin.
