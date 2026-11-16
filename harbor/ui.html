@@ -10,6 +10,7 @@
     --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
     --accent: #2f6fed; --accent-text: #fff; --ok: #16794c; --warn: #a15c00; --bad: #c0362c;
     --run: #2f6fed; --bar: #e8edf7; --chip: #eef1f5; --hover: #f1f4f9; --shadow: 0 10px 30px rgba(16,24,40,.18);
+    color-scheme: light dark;  /* native scrollbars and controls follow the theme */
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -87,6 +88,14 @@
   .dlg-head { border-bottom: 1px solid var(--line); }
   .dlg-foot { border-top: 1px solid var(--line); justify-content: space-between; }
   .dlg-body { padding: 8px 16px; }
+  /* The folder picker keeps one size: the folder list fills it and scrolls inside. */
+  #picker { height: min(560px, calc(100vh - 32px)); }
+  #picker[open] { display: flex; flex-direction: column; }
+  #picker .dlg-head, #picker .dlg-foot { flex: none; }
+  #picker .dlg-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #picker .dlg-body > * { flex: none; }
+  #picker .dirlist { flex: 1 1 0; min-height: 0; max-height: none; }
+  #picker .msg { min-height: 1.4em; }
   .shortcuts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
   .dirlist { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
   .dirlist li button { width: 100%; text-align: left; border: none; border-radius: 0; background: none; padding: 7px 10px; }
