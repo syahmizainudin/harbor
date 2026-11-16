@@ -38,7 +38,21 @@
   .tab:hover { background: var(--hover); filter: none; }
   .tab[aria-selected="true"] { color: var(--text); background: var(--chip); box-shadow: inset 3px 0 0 var(--accent); }
   .tab .badge { margin-left: auto; }
-  .side-foot { margin-top: auto; }
+  .side-acct { margin-top: auto; }
+  .side-btn { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; color: var(--text);
+              text-align: left; padding: 8px 10px; font-weight: 600; }
+  .side-btn svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+  .side-btn:hover { background: var(--hover); filter: none; }
+  .side-btn .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.narrow .side-btn { justify-content: center; }
+  body.narrow .side-btn .txt { display: none; }
+  #acctDlg { width: min(520px, calc(100vw - 32px)); }
+  #acctDlg section + section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+  #acctDlg h3 { font-size: 14px; margin: 0 0 8px; }
+  #acctDlg input { width: 100%; margin-bottom: 8px; }
+  .tokens { list-style: none; margin: 0 0 8px; padding: 0; }
+  .tokens li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .newtoken { word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0; }
   #collapse { width: 100%; border: none; background: none; color: var(--muted); text-align: left; padding: 8px 10px; }
   #collapse:hover { background: var(--hover); filter: none; }
   /* Collapsed: icons only. */
@@ -127,7 +141,8 @@
     nav.side, body.narrow nav.side { width: auto; flex-direction: row; align-items: center; padding: 6px 8px;
                                      border-right: none; border-bottom: 1px solid var(--line); }
     .tabs { flex-direction: row; }
-    .side-foot, .brand span, body.narrow .tab .txt { display: none; }
+    .side-foot, .brand span, body.narrow .tab .txt, .side-btn .txt { display: none; }
+    .side-acct { margin: 0 0 0 auto; }
     body.narrow .tab .badge { position: static; margin: 0 0 0 6px; }
     thead { display: none; }
     tr { display: block; border-top: 1px solid var(--line); padding: 8px 0; }
@@ -162,6 +177,9 @@
     <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert" title="Convert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg><span class="txt">Convert</span><span class="badge" id="badge-convert"></span></button>
     <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download" title="Download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span class="txt">Download</span><span class="badge" id="badge-download"></span></button>
     <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library" title="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 15M3 20h18"/></svg><span class="txt">Library</span></button>
+  </div>
+  <div class="side-acct" id="acct" hidden>
+    <button class="side-btn" id="acctBtn" title="Your account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="txt" id="acctName"></span></button>
   </div>
   <div class="side-foot"><button id="collapse" title="Collapse the sidebar"><span aria-hidden="true">«</span> <span class="txt">Collapse</span></button></div>
 </nav>
@@ -281,6 +299,32 @@
 </main>
 
 <!-- ===================== Folder picker ===================== -->
+<dialog id="acctDlg" aria-labelledby="acctTitle">
+  <div class="dlg-head"><strong id="acctTitle" style="flex:1">Account</strong><button type="button" class="link" id="acctClose">Close</button></div>
+  <div class="dlg-body">
+    <section>
+      <h3>Change password</h3>
+      <form id="pwForm">
+        <input type="text" name="username" id="pwUser" autocomplete="username" hidden>
+        <input type="password" id="pwCur" placeholder="Current password" autocomplete="current-password" aria-label="Current password">
+        <input type="password" id="pwNew" placeholder="New password (8 or more characters)" autocomplete="new-password" aria-label="New password">
+        <input type="password" id="pwNew2" placeholder="New password again" autocomplete="new-password" aria-label="New password again">
+        <button class="primary" id="pwSave">Change password</button>
+        <div class="msg" id="pwMsg"></div>
+      </form>
+    </section>
+    <section>
+      <h3>Chrome extension</h3>
+      <p class="note">The extension signs in with a token. Create one, paste it into the extension's popup, and revoke it here if the computer is lost.</p>
+      <ul class="tokens" id="tokenList"></ul>
+      <div class="field"><input type="text" id="tokenLabel" placeholder="Name, such as Work laptop" aria-label="Token name"><button id="tokenNew">Create token</button></div>
+      <div id="tokenShow" hidden><div class="note">Copy it now; it won't be shown again.</div><div class="newtoken mono" id="tokenValue"></div><button class="small" id="tokenCopy">Copy</button></div>
+      <div class="msg" id="tokenMsg"></div>
+    </section>
+  </div>
+  <div class="dlg-foot"><span class="note">Signing out ends this browser's session.</span><button id="signOut">Sign out</button></div>
+</dialog>
+
 <dialog id="picker" aria-labelledby="pickerTitle">
   <form method="dialog" class="dlg-head" id="pickerGo">
     <strong id="pickerTitle" style="width:100%">Choose a folder</strong>
@@ -322,6 +366,7 @@ function base(p) { return String(p || "").split("/").pop(); }
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} :
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.status === 401) { location.href = "/login"; throw new Error("signed out"); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
@@ -594,7 +639,54 @@ function render(st) {
   }
   renderConvert(st);
   renderDownloads(st);
+  renderAccount(st.account);
 }
+
+/* ---------- account ---------- */
+let account = null;
+function renderAccount(a) {
+  $("acct").hidden = !a;
+  if (!a) return;
+  if (JSON.stringify(a) === JSON.stringify(account)) return;
+  account = a;
+  $("acctName").textContent = a.name;
+  $("acctBtn").title = `Signed in as ${a.name}${a.admin ? " (admin)" : ""}`;
+  $("acctTitle").textContent = `Account: ${a.name}`;
+  $("pwUser").value = a.name;
+  $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)}<br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
+    <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
+}
+$("acctBtn").onclick = () => { say($("pwMsg"), ""); say($("tokenMsg"), ""); $("tokenShow").hidden = true; $("acctDlg").showModal(); };
+$("acctClose").onclick = () => $("acctDlg").close();
+$("pwForm").onsubmit = async e => {
+  e.preventDefault();
+  if ($("pwNew").value !== $("pwNew2").value) return say($("pwMsg"), "The new passwords don't match.", true);
+  try {
+    await api("/api/account/password", { current: $("pwCur").value, new: $("pwNew").value });
+    for (const id of ["pwCur", "pwNew", "pwNew2"]) $(id).value = "";
+    say($("pwMsg"), "Password changed. Other browsers were signed out.");
+  } catch (err) { say($("pwMsg"), err.message, true); }
+};
+$("tokenNew").onclick = async () => {
+  try {
+    const t = await api("/api/account/token-create", { label: $("tokenLabel").value });
+    $("tokenValue").textContent = t.token;
+    $("tokenShow").hidden = false;
+    $("tokenLabel").value = "";
+    say($("tokenMsg"), "");
+    refresh();
+  } catch (err) { say($("tokenMsg"), err.message, true); }
+};
+$("tokenCopy").onclick = () => navigator.clipboard?.writeText($("tokenValue").textContent).then(() => say($("tokenMsg"), "Copied."), () => {});
+$("tokenList").onclick = async e => {
+  const b = e.target.closest("[data-revoke]");
+  if (!b || !confirm("Revoke this token? The extension using it stops working until it gets a new one.")) return;
+  try { await api("/api/account/token-revoke", { id: +b.dataset.revoke }); refresh(); } catch (err) { say($("tokenMsg"), err.message, true); }
+};
+$("signOut").onclick = async () => {
+  try { await api("/api/account/logout", {}); } catch {}
+  location.href = "/login";
+};
 
 async function refresh() {
   try { render(await api("/api/state")); }

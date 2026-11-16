@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Harbor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send links to your local Harbor to download them, and convert archives to WebP .cbz.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAss5ZZdNQeCH/gL0js9MIzevexFy0Mvr6B7zQV9VPt4DQlsgl0McHdLE1YofKblS5Q0aVbCXvzhG3SAJho8HwKCG1B8o0yxtMOlRv49puLmTdadqs+KJcLf/NL8SNm8+psyHTtmUBQUMQkCMJSWMOSvuYFiGRfUOyHlkiPbjTb8joYIDl9LQYSwVK+xnx+Q0VPFKCPs6Z1+nM40CoWmGFeid5K+n00j/AfyM9wfl+6Uzs680f3M9eQ0de0TmpwQPmy3Ax8pN/30MmUyB+2bvTgg8vXCZ2hj0p8Kf5lHz3uzCxwuxmzlgoCsrc3bajQA43ts+jMb2aJWhZ/Zsv5L1e/QIDAQAB",
   "icons": {

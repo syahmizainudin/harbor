@@ -4,6 +4,10 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- **Accounts:** everyone signs in. Make accounts with `harbor user add NAME [--admin]`, and manage them with `passwd`, `list`, `disable`, `enable` and `remove`. Passwords are scrypt hashes. Sessions are an `HttpOnly; SameSite=Strict` cookie that lasts `HARBOR_SESSION_DAYS`. Repeated wrong passwords lock a name for 15 minutes. Settings: `HARBOR_ACCOUNTS`, `HARBOR_ACCOUNTS_DB`, `HARBOR_SESSION_DAYS`, `HARBOR_SECURE_COOKIE`.
+- **Your account** at the bottom of the sidebar: change your password, make and revoke Chrome extension tokens, sign out.
+- Library progress, Continue reading and favourites are per user. Progress from before accounts goes to the first admin.
+- **Chrome extension 0.2.0:** paste a token from your account into the popup's Settings. It says **Not signed in** without one.
 - **Library tab:** [cbz-shelf](https://github.com/syahmizainudin/cbz-shelf) in harbor. Add folders and every `.cbz` inside is grouped into series and indexed for search. Edit metadata (authors, tags, and more) and read in the browser: single page, two pages, or vertical scroll, left to right or right to left. Progress is saved. Settings: `HARBOR_LIBRARY_DB`, `HARBOR_LIBRARY_SCAN`.
 - A conversion that finishes inside a library folder is added to the library right away, so a download saved into a library folder shows up as a book.
 - The folder pickers (harbor's, and the Library's Folders window from cbz-shelf v0.1.1) keep one size instead of resizing as you browse. Scrollbars follow the dark theme.

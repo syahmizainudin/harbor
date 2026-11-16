@@ -28,6 +28,7 @@ from . import __version__
 from .config import Settings
 
 UI_HTML = (Path(__file__).parent / "ui.html").read_bytes()
+LOGIN_HTML = (Path(__file__).parent / "login.html").read_bytes()
 
 
 def check_after(after: dict) -> dict:
@@ -172,6 +173,14 @@ class HarborAPI:
         return 404, {"error": "not found"}
 
 
+def _user_id() -> int:
+    """The signed-in user's id for the library (0 without accounts)."""
+    from cbzwebp.web import current_user
+
+    user = current_user()
+    return int(user["id"]) if user else 0
+
+
 def serve_harbor(
     port: int,
     convert_queue: JobQueue,
@@ -179,9 +188,13 @@ def serve_harbor(
     settings: Settings | None = None,
     notes: list[str] | None = None,
     library: Library | None = None,
+    accounts=None,
 ) -> ThreadingHTTPServer:
     """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
-    with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab)."""
+    with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab).
+    With ``accounts``, everything but the sign-in page needs a signed-in user (``/api/account/``)."""
+    from .accounts import AccountAPI, HarborSignIn
+
     settings = settings or Settings()
     apis = {
         "/api/": ConvertAPI(convert_queue, {"quality": settings.quality, "method": settings.method}),
@@ -190,6 +203,12 @@ def serve_harbor(
     }
     pages = {}
     if library is not None:
-        apis["/api/library/"] = LibraryAPI(library)
+        apis["/api/library/"] = LibraryAPI(library, user_of=_user_id)
         pages["/library"] = LIBRARY_HTML
-    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages)
+    auth = None
+    if accounts is not None:
+        apis["/api/account/"] = AccountAPI(accounts)
+        pages["/login"] = LOGIN_HTML
+        auth = HarborSignIn(accounts)
+    extra = {"auth": auth} if auth else {}  # only when needed: works with a cbz-webp that predates sign-in
+    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages, **extra)

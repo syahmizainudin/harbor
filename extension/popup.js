@@ -28,7 +28,7 @@ async function showStatus() {
     $("dest").placeholder = st.harbor?.download_dir ? `Harbor's default: ${st.harbor.download_dir}` : "Required: Harbor has no default folder";
     $("sendTab").disabled = false;
   } catch (e) {
-    $("status").textContent = "Not running";
+    $("status").textContent = e.signedOut ? "Not signed in" : "Not running";
     $("status").className = "status bad";
     $("chips").innerHTML = "";
     $("active").innerHTML = `<li><span>${esc(e.message)}</span></li>`;
@@ -111,6 +111,8 @@ $("openHarbor").onclick = async () => chrome.tabs.create({ url: (await settings(
   $("harborUrl").value = s.harborUrl === DEFAULT_URL ? "" : s.harborUrl;
   $("dest").value = s.dest;
   $("convert").checked = s.convert;
+  $("token").value = s.token;
+  if (!s.token) $("settingsBox").open = true;
 })();
 $("harborUrl").onchange = async () => {
   const v = $("harborUrl").value.trim();
@@ -122,6 +124,13 @@ $("harborUrl").onchange = async () => {
   showStatus();
 };
 $("dest").onchange = () => chrome.storage.local.set({ dest: $("dest").value.trim() });
+$("token").onchange = async () => {
+  const v = $("token").value.trim();
+  if (v && !/^hbt_[A-Za-z0-9_-]{20,}$/.test(v)) return say("That doesn't look like a Harbor token (hbt_…)", "err");
+  await chrome.storage.local.set({ token: v });
+  say("");
+  showStatus();
+};
 $("convert").onchange = () => chrome.storage.local.set({ convert: $("convert").checked });
 
 showStatus();

@@ -20,13 +20,16 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/app.py` | `check_after` (validates a download's convert options), `make_on_saved` (the hand-off), `build` (starts both queues) and `serve_harbor` (mounts `ConvertAPI` at `/api/`, `EnvKeyDownloadAPI` at `/api/download/` and `HarborAPI`, page defaults only, at `/api/harbor/`) |
 | `harbor/config.py` | Settings: `.env` parsing, file lookup, precedence (flag > environment > file > default), validation |
 | `harbor/state.py` | `QueueStore`: saves unfinished jobs on every change, restores them at start-up through the queues' `add` |
+| `harbor/accounts.py` | `Accounts` (users, sessions, extension tokens), `HarborSignIn` (the server's `auth`), `AccountAPI` at `/api/account/` |
+| `harbor/login.html` | The sign-in page, served at `/login` |
+| `docs/plan-users.md` | The plan for accounts, permissions and per-user settings, phase by phase |
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
 | `ecosystem.config.cjs` | pm2 config that keeps harbor running |
 | `harbor/ui.html` | The two-tab page: one file, CSS and JS inline (including the logo and favicon), no external requests |
 | `assets/logo.svg` | The logo. The page inlines it twice (header and favicon data URI); `LogoTests` checks they match |
 | `.env.example` | Every setting, commented. Real `.env` files are git-ignored |
-| `harbor/cli.py` | `harbor ui` |
+| `harbor/cli.py` | `harbor ui`, and `harbor user add/passwd/list/disable/enable/remove` |
 | `bin/harbor` | Runs the CLI from a checkout |
 | `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `test_library_tab.py` (library mounted, conversions landing in it), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
 | `ci/release_notes.py`, `.github/workflows/` | Release gate, CI and release pipelines, as in the other two repos |
@@ -57,6 +60,21 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - `make_library_hook` is the convert queue's `on_convert_change`: a conversion that finishes inside a library folder is indexed at once with `Library.scan_file`. Conversions elsewhere are ignored. A full rescan runs at start-up (`HARBOR_LIBRARY_SCAN`).
 - On shutdown, close the library last, after both queues.
 - Library behaviour (scanning, metadata layers, the reader) belongs in cbz-shelf, not here; follow its AGENTS.md rules. Never point a test at the user's library database (`HARBOR_LIBRARY_DB`, default `~/.local/share/harbor/library.db`).
+
+## Accounts (`accounts.py`)
+
+- **Where it's checked.** cbz-webp's shared server takes `auth=HarborSignIn(accounts)`, so every page and API needs a signed-in user except `HarborSignIn.PUBLIC`: the sign-in page, `POST /api/account/login` and `GET /api/account/status`. Don't widen that set. `current_user()` (from `cbzwebp.web`) names the user inside an API. Never take a user id from a request body or query.
+- **Secrets.**
+  - Passwords are stored only as scrypt hashes (`hash_password`). Session ids and extension tokens are random, and only their SHA-256 is stored.
+  - Never log, print or put into `/api/state` a password, session id or token. `HarborSignIn.user` adds `_sid` to the user for sign-out and password changes; `AccountAPI.state` must never include it.
+  - A token is shown once, in the answer to `token-create`.
+- **Cookie.** `HttpOnly; SameSite=Strict; Path=/`, plus `Secure` with `HARBOR_SECURE_COOKIE` (HTTPS only). The Origin and JSON-only checks on POST still apply, the sign-in POST included.
+- **Sign-in failures.** Wrong names and wrong passwords get the same answer, and an unknown name is checked against a dummy hash so timing doesn't tell. `LOCK_AFTER` failures for a name in `LOCK_WINDOW` lock it.
+- **Tokens** are for the Chrome extension (`X-Harbor-Token` header). A token can use the console but can't manage the account: no password change, no new tokens.
+- **No sign-up page.** The first account comes from `harbor user add NAME --admin`. The last enabled admin can't be disabled or removed.
+- **Library data per user.** `LibraryAPI` gets `user_of=_user_id`. At start-up, `Library.give_user_data(0, first_admin)` hands pre-accounts progress and favourites to the first admin.
+- **Schema changes** go in `accounts.MIGRATIONS`, one step each; never drop user data.
+- **Tests** use a temp accounts database. Never point one at `~/.local/share/harbor/harbor.db`.
 
 ## Saved jobs (`state.py`)
 

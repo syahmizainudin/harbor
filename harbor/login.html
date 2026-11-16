@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Harbor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 64 64&quot; role=&quot;img&quot; aria-label=&quot;Harbor&quot;%3E%0A  %3Cdefs%3E%0A    %3ClinearGradient id=&quot;harbor-bg&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;%3E%0A      %3Cstop offset=&quot;0&quot; stop-color=&quot;%233b7cf0&quot;/%3E%0A      %3Cstop offset=&quot;1&quot; stop-color=&quot;%23173a86&quot;/%3E%0A    %3C/linearGradient%3E%0A  %3C/defs%3E%0A  %3Crect width=&quot;64&quot; height=&quot;64&quot; rx=&quot;14&quot; fill=&quot;url%28%23harbor-bg%29&quot;/%3E%0A  %3Cg fill=&quot;none&quot; stroke=&quot;%23ffffff&quot; stroke-width=&quot;4&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;%3E%0A    %3Ccircle cx=&quot;32&quot; cy=&quot;13&quot; r=&quot;5&quot;/%3E%0A    %3Cpath d=&quot;M32 18v28&quot;/%3E%0A    %3Cpath d=&quot;M23 25h18&quot;/%3E%0A    %3Cpath d=&quot;M15 34c1.5 8.5 8 13 17 13s15.5-4.5 17-13&quot;/%3E%0A    %3Cpath d=&quot;M10.5 38.5 15 33.5l5 4&quot;/%3E%0A    %3Cpath d=&quot;M53.5 38.5 49 33.5l-5 4&quot;/%3E%0A  %3C/g%3E%0A  %3Cpath d=&quot;M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0&quot; fill=&quot;none&quot; stroke=&quot;%239cc4ff&quot; stroke-width=&quot;3&quot; stroke-linecap=&quot;round&quot;/%3E%0A%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2f6fed; --accent-text: #fff; --bad: #c0362c; --shadow: 0 10px 30px rgba(16,24,40,.12);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12151b; --panel: #1a1f27; --text: #e6e9ef; --muted: #98a2b3; --line: #2a313c;
+            --accent: #5b8cff; --accent-text: #0b1020; --bad: #ff6b5e; --shadow: 0 10px 30px rgba(0,0,0,.5); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg);
+         color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { width: min(360px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+         padding: 28px 24px 24px; box-shadow: var(--shadow); }
+  .brand { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; font-size: 20px; }
+  .brand svg { width: 34px; height: 34px; }
+  label { display: block; font-weight: 600; margin: 12px 0 6px; }
+  input { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg);
+          color: var(--text); font: inherit; }
+  button { width: 100%; margin-top: 18px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--accent);
+           background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { min-height: 1.4em; margin-top: 12px; color: var(--bad); }
+  .setup { color: var(--muted); }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="brand">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Harbor">
+  <defs>
+    <linearGradient id="harbor-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b7cf0"/>
+      <stop offset="1" stop-color="#173a86"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#harbor-bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="13" r="5"/>
+    <path d="M32 18v28"/>
+    <path d="M23 25h18"/>
+    <path d="M15 34c1.5 8.5 8 13 17 13s15.5-4.5 17-13"/>
+    <path d="M10.5 38.5 15 33.5l5 4"/>
+    <path d="M53.5 38.5 49 33.5l-5 4"/>
+  </g>
+  <path d="M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0" fill="none" stroke="#9cc4ff" stroke-width="3" stroke-linecap="round"/>
+</svg>
+  Harbor</h1>
+  <form id="form" hidden>
+    <label for="name">Name</label>
+    <input id="name" name="username" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="go">Sign in</button>
+    <div class="msg" id="msg" role="alert"></div>
+  </form>
+  <div id="setup" class="setup" hidden>
+    <p>No accounts yet. Create the first one, an admin, on the computer running harbor:</p>
+    <p><code>harbor user add NAME --admin</code></p>
+    <p>Then reload this page.</p>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const next = () => {
+  const n = new URLSearchParams(location.search).get("next") || "/";
+  return n.startsWith("/") && !n.startsWith("//") ? n : "/";  // only this site
+};
+(async () => {
+  try {
+    const st = await fetch("/api/account/status").then(r => r.json());
+    if (st.signed_in) return location.replace(next());
+    $(st.accounts ? "form" : "setup").hidden = false;
+  } catch { $("form").hidden = false; }
+})();
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  $("go").disabled = true;
+  $("msg").textContent = "";
+  try {
+    const r = await fetch("/api/account/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("name").value, password: $("password").value }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    location.replace(next());
+  } catch (err) {
+    $("msg").textContent = err.message;
+    $("password").select();
+  } finally { $("go").disabled = false; }
+};
+</script>
+</body>
+</html>

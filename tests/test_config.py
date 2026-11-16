@@ -250,6 +250,9 @@ class LogoTests(unittest.TestCase):
         self.assertEqual(
             unquote(icon.group(1).replace("&quot;", '"')), logo, "favicon differs from assets/logo.svg"
         )
+        login = (ROOT / "harbor" / "login.html").read_text()
+        self.assertIn(logo, login, "sign-in page logo differs from assets/logo.svg")
+        self.assertIn(icon.group(0), login, "sign-in page favicon differs from the console's")
 
 
 if __name__ == "__main__":

@@ -22,6 +22,29 @@ pipx install git+https://github.com/syahmizainudin/harbor
 
 That also installs cbz-webp and dl-queue at the versions pinned in `pyproject.toml`, and Pillow. Each [release](https://github.com/syahmizainudin/harbor/releases) also has a wheel.
 
+## Accounts
+
+harbor asks everyone to sign in. Make the first account, an admin, before starting it:
+
+```bash
+harbor user add YOUR-NAME --admin     # asks for a password (8 or more characters)
+```
+
+| Command | What it does |
+|---|---|
+| `harbor user add NAME [--admin]` | Adds an account. `--password-stdin` reads the password from standard input |
+| `harbor user passwd NAME` | Sets a new password and signs the account out everywhere |
+| `harbor user list` | Lists accounts |
+| `harbor user disable NAME` / `enable NAME` | Stops or allows signing in. Disabling ends the account's sessions and extension tokens |
+| `harbor user remove NAME` | Deletes the account |
+
+The last admin who can sign in can't be disabled or removed. Each user has their own reading progress, Continue reading and favourites in the Library tab. Book and series details are shared. Reading progress from before accounts existed goes to the first admin when harbor starts.
+
+- **Signing in:** a signed-out visit goes to the sign-in page. A session lasts `HARBOR_SESSION_DAYS` (30) days after it was last used. After 5 wrong passwords for a name, that name is locked for 15 minutes.
+- **Your account** (bottom of the sidebar): change your password, which signs out your other browsers, make tokens for the Chrome extension, and sign out.
+- **What's stored:** passwords as salted scrypt hashes, and only hashes of session ids and tokens, in `HARBOR_ACCOUNTS_DB` (`~/.local/share/harbor/harbor.db`, readable only by you).
+- **What it protects:** harbor still listens only on `127.0.0.1`. Accounts keep people who share this computer's browser apart. They don't protect against someone who can read your files in WSL.
+
 ## Run
 
 ```bash
@@ -47,6 +70,10 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_EXTENSION_ORIGINS` | the Harbor extension | Origins allowed besides the page: exact origins, comma-separated, or `off` |
 | | `HARBOR_LIBRARY_DB` | `~/.local/share/harbor/library.db` | The Library tab's database (folders, metadata edits, reading progress) |
 | | `HARBOR_LIBRARY_SCAN` | `true` | Rescan library folders when harbor starts |
+| | `HARBOR_ACCOUNTS` | `true` | Require signing in. `false` turns accounts off: anyone who can reach the page can use it |
+| | `HARBOR_ACCOUNTS_DB` | `~/.local/share/harbor/harbor.db` | Accounts, sessions and extension tokens |
+| | `HARBOR_SESSION_DAYS` | 30 | How long a sign-in lasts after it was last used |
+| | `HARBOR_SECURE_COOKIE` | `false` | Mark the session cookie `Secure`. Only when harbor is served over HTTPS |
 | `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
@@ -133,8 +160,9 @@ Downloads sent this way use harbor's defaults: the `.env` key, folder and auth s
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose `\\wsl.localhost\Ubuntu\app\tools\harbor\extension`.
 3. Pin the Harbor icon. Harbor must be running (see above).
+4. In harbor, open your account (bottom of the sidebar) and click **Create token**. Paste the token into the popup's **Settings → Token**. The popup says **Not signed in** until it has one.
 
-The extension always gets the ID `pioghlmpnbcbgiemaphgpnendofahggb`, because its manifest carries a fixed public key. Harbor accepts requests from exactly that origin, which the browser sets itself: other websites and other extensions are still refused. The extension never sees the API key. It sends downloads without one, and harbor adds the `.env` key.
+The extension always gets the ID `pioghlmpnbcbgiemaphgpnendofahggb`, because its manifest carries a fixed public key. Harbor accepts requests from exactly that origin, which the browser sets itself: other websites and other extensions are still refused. The token says which user is sending. Revoke it from your account if the computer is lost. The extension never sees the API key. It sends downloads without one, and harbor adds the `.env` key.
 
 ## Development
 

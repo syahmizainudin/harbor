@@ -83,6 +83,10 @@ class Settings:
     extension_origins: str = ""  # empty: harbor's own Chrome extension; "off": none
     library_db: str = ""  # empty: app.default_library_db()
     library_scan: bool = True  # rescan library folders at start-up
+    accounts: bool = True  # require signing in (accounts in accounts_db)
+    accounts_db: str = ""  # empty: accounts.default_accounts_db()
+    session_days: int = 30  # how long a sign-in lasts without use
+    secure_cookie: bool = False  # mark the session cookie Secure: only when harbor is behind HTTPS
     source: str | None = None  # the .env file used, for the startup message
 
     def page_defaults(self) -> dict:
@@ -170,6 +174,10 @@ VARS = {
     "extension_origins": ("HARBOR_EXTENSION_ORIGINS", _origins),
     "library_db": ("HARBOR_LIBRARY_DB", _text),
     "library_scan": ("HARBOR_LIBRARY_SCAN", _bool),
+    "accounts": ("HARBOR_ACCOUNTS", _bool),
+    "accounts_db": ("HARBOR_ACCOUNTS_DB", _text),
+    "session_days": ("HARBOR_SESSION_DAYS", _int(1, 365)),
+    "secure_cookie": ("HARBOR_SECURE_COOKIE", _bool),
 }
 
 
