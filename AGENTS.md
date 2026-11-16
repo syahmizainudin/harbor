@@ -80,6 +80,7 @@ Downloads and conversions write and delete the user's files, and the API key is 
   - `HarborSignIn.allows`: `/api/dirs` needs `convert`, `download` or `library.manage`.
   - `admin.AdminAPI`: `users.manage` and `roles.manage`, with the no-escalation rule: a non-admin hands out, edits and acts on only what is within their own permissions.
   - The page hides what you can't use (`applyPerms`), but the checks above are what count. A new action that changes something shared needs a permission check here, with a test in `tests/test_permissions.py`.
+- **Per-user defaults** (`accounts.PREFS`, table `prefs`): validated, never the API key. `HarborSignIn.user` adds them to the user as `prefs`. `HarborAPI.state` merges `USER_PAGE_PREFS` over `page_defaults()`, and `GuardedQueueAPI` merges `quality` and `method` into the convert `defaults`, so the page and the extension get them without knowing about accounts. The page saves field changes with `POST /api/account/prefs` (browser sessions only).
 - **Library data per user.** `LibraryAPI` gets `user_of=_user_id`. At start-up, `Library.give_user_data(0, first_admin)` hands pre-accounts progress and favourites to the first admin.
 - **Schema changes** go in `accounts.MIGRATIONS`, one step each; never drop user data.
 - **Tests** use a temp accounts database. Never point one at `~/.local/share/harbor/harbor.db`.

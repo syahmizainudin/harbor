@@ -74,6 +74,9 @@ class GuardedQueueAPI:
     def state(self) -> dict:
         st = self.inner.state()
         user = current_user()
+        if user is not None and self.kind == "convert" and "defaults" in st:  # their own quality and effort
+            prefs = user.get("prefs", {})
+            st["defaults"] = {**st["defaults"], **{k: prefs[k] for k in ("quality", "method") if k in prefs}}
         if user is not None and SEE_ALL not in user.get("perms", ()):
             st[self.list_key] = [
                 j for j in st[self.list_key] if self.owners.get(self.kind, j["id"]) == user["id"]

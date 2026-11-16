@@ -69,6 +69,9 @@ MIGRATIONS: list[str] = [
        INSERT INTO roles(id, name, perms_json) VALUES (3, 'Reader', '["library.read"]');
        ALTER TABLE users ADD COLUMN role_id INTEGER NOT NULL DEFAULT 2;
        UPDATE users SET role_id = 1 WHERE is_admin = 1""",
+    # 2: each user's own Convert and Download defaults (never the API key).
+    """CREATE TABLE prefs (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                          prefs_json TEXT NOT NULL DEFAULT '{}')""",
 ]
 ADMIN_ROLE, MEMBER_ROLE = 1, 2
 
@@ -85,6 +88,26 @@ PERMISSIONS = [
     ("roles.manage", "Manage roles and permissions"),
 ]
 ALL_PERMS = frozenset(p for p, _ in PERMISSIONS)
+
+
+def _text(limit: int):
+    return lambda v: isinstance(v, str) and len(v) <= limit and not any(c in v for c in "\r\n\0")
+
+
+def _int_in(lo: int, hi: int):
+    return lambda v: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
+
+
+# A user's own defaults for the Convert and Download tabs: name -> check. Never the API key.
+PREFS = {
+    "quality": _int_in(1, 100),
+    "method": _int_in(0, 6),
+    "delete_original": lambda v: isinstance(v, bool),
+    "download_dir": _text(4096),
+    "auth_mode": lambda v: v in ("none", "bearer", "header", "query"),
+    "auth_name": _text(200),
+    "convert_downloads": lambda v: isinstance(v, bool),
+}
 
 
 def clean_perms(perms) -> list[str]:
@@ -254,6 +277,33 @@ class Accounts:
                 (target["id"], int(target["id"] == ADMIN_ROLE), user["id"]),
             )
         return self.get(name)
+
+    # ------------------------------------------------------------ preferences
+    def prefs(self, user_id: int) -> dict:
+        rows = self._q("SELECT prefs_json FROM prefs WHERE user_id = ?", (int(user_id),))
+        return json.loads(rows[0]["prefs_json"]) if rows else {}
+
+    def set_prefs(self, user_id: int, changes: dict) -> dict:
+        """Change some of a user's defaults; None removes one (back to harbor's .env default)."""
+        if not isinstance(changes, dict):
+            raise ValueError("changes must be an object")
+        prefs = self.prefs(user_id)
+        for key, value in changes.items():
+            if key not in PREFS:
+                raise ValueError(f"unknown setting: {key}")
+            if value is None:
+                prefs.pop(key, None)
+            elif not PREFS[key](value):
+                raise ValueError(f"bad value for {key}")
+            else:
+                prefs[key] = value.strip() if isinstance(value, str) else value
+        with self._lock:
+            self._db.execute(
+                """INSERT INTO prefs(user_id, prefs_json) VALUES (?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET prefs_json = excluded.prefs_json""",
+                (int(user_id), json.dumps(prefs)),
+            )
+        return prefs
 
     # ------------------------------------------------------------ roles
     def roles(self) -> list[dict]:
@@ -479,11 +529,12 @@ class HarborSignIn:
     def user(self, headers) -> dict | None:
         token = headers.get(TOKEN_HEADER, "") if headers else ""
         if token:
-            return self.accounts.token_user(token)
+            user = self.accounts.token_user(token)
+            return user and {**user, "prefs": self.accounts.prefs(user["id"])}
         sid = session_id(headers)
         user = self.accounts.session_user(sid)
         # The session id rides along for sign-out and password changes; AccountAPI never shows it.
-        return user and {**user, "_sid": sid}
+        return user and {**user, "prefs": self.accounts.prefs(user["id"]), "_sid": sid}
 
 
 class AccountAPI:
@@ -510,6 +561,7 @@ class AccountAPI:
                 "perms": me.get("perms", []),
                 "browser": bool(me.get("_sid")),
                 "tokens": self.accounts.tokens(me["id"]) if me.get("_sid") else [],
+                "prefs": me.get("prefs", {}),
             }
         }
 
@@ -547,6 +599,8 @@ class AccountAPI:
                 return 400, {"error": "your current password is wrong"}
             self.accounts.set_password(me["name"], str(body.get("new", "")), keep_session=me["_sid"])
             return 200, {"ok": True}
+        if action == "prefs":
+            return 200, self.accounts.set_prefs(me["id"], body.get("changes") or {})
         if action == "token-create":
             info, token = self.accounts.create_token(me["id"], str(body.get("label", "")))
             return 200, {**info, "token": token}

@@ -162,6 +162,10 @@ class EnvKeyDownloadAPI(DownloadAPI):
         return super().post(action, body)
 
 
+# Settings a user's own defaults replace in the "harbor" state (quality and method go in "defaults").
+USER_PAGE_PREFS = ("download_dir", "auth_mode", "auth_name", "delete_original", "method", "convert_downloads")
+
+
 class HarborAPI:
     """Page defaults from settings, at /api/harbor/ (state only; no actions)."""
 
@@ -170,7 +174,14 @@ class HarborAPI:
         self.notes = notes if notes is not None else []  # the same list: the CLI fills it after start
 
     def state(self) -> dict:
-        return {"harbor": {"version": __version__, **self.settings.page_defaults(), "notes": self.notes}}
+        from cbzwebp.web import current_user
+
+        defaults = {**self.settings.page_defaults(), "convert_downloads": True}
+        user = current_user()
+        if user:  # the signed-in user's own defaults win over the .env ones
+            prefs = user.get("prefs", {})
+            defaults.update({k: prefs[k] for k in USER_PAGE_PREFS if k in prefs})
+        return {"harbor": {"version": __version__, **defaults, "notes": self.notes}}
 
     def post(self, action: str, body: dict) -> tuple[int, dict]:
         return 404, {"error": "not found"}

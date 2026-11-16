@@ -258,6 +258,42 @@ class SignInHttpTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/api/state", cookie=sid)[0], 200)
         self.assertEqual(self.req("GET", "/api/state", cookie=other)[0], 401)
 
+    def test_own_defaults(self):
+        ann, bo = self.login("Ann"), self.login("Bo")
+        prefs = {
+            "quality": 55,
+            "method": 6,
+            "download_dir": "/mnt/d/In",
+            "auth_mode": "none",
+            "convert_downloads": False,
+        }
+        status, _, saved = self.req("POST", "/api/account/prefs", {"changes": prefs}, cookie=ann)
+        self.assertEqual((status, saved), (200, prefs))
+        st = self.req("GET", "/api/state", cookie=ann)[2]
+        self.assertEqual((st["defaults"]["quality"], st["defaults"]["method"]), (55, 6))
+        h = st["harbor"]
+        self.assertEqual(
+            (h["download_dir"], h["auth_mode"], h["convert_downloads"], h["method"]),
+            ("/mnt/d/In", "none", False, 6),
+        )
+        self.assertEqual(st["account"]["prefs"], prefs)
+        other = self.req("GET", "/api/state", cookie=bo)[2]
+        self.assertEqual(
+            (other["defaults"]["quality"], other["harbor"]["download_dir"]), (80, "")
+        )  # .env defaults
+        for bad in (
+            {"quality": 0},
+            {"quality": "80"},
+            {"api_key": "x"},
+            {"download_dir": "a\nb"},
+            {"auth_mode": "magic"},
+        ):
+            self.assertEqual(
+                self.req("POST", "/api/account/prefs", {"changes": bad}, cookie=ann)[0], 400, bad
+            )
+        self.req("POST", "/api/account/prefs", {"changes": {"quality": None}}, cookie=ann)
+        self.assertEqual(self.req("GET", "/api/state", cookie=ann)[2]["defaults"]["quality"], 80)
+
     def test_no_accounts_yet(self):
         empty = A.Accounts(self.dir / "empty.db")
         self.addCleanup(empty.close)

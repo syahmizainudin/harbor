@@ -60,6 +60,7 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
   | `roles.manage` | The Admin tab's roles and permissions matrix |
 
   The folder browser needs `convert`, `download` or `library.manage`. Someone who manages users or roles but isn't an admin can only hand out permissions they have themselves, so they can't make anyone (or themselves) an admin.
+- **Your defaults:** the Convert and Download fields (quality, effort, deleting originals, download folder, how the API key is sent, converting downloads) are saved with your account as you change them, so they follow you to any browser and the Chrome extension uses them. **Account → Go back to harbor's defaults** returns to the `.env` values. The text reader's size, width and colours are saved with your account too. The API key itself is never saved per user.
 - **Admin tab:** Users (add, change role, reset password, disable, remove), the roles × permissions matrix, and Series (rename and edit the shared details of any series).
 - **What's stored:** passwords as salted scrypt hashes, and only hashes of session ids and tokens, in `HARBOR_ACCOUNTS_DB` (`~/.local/share/harbor/harbor.db`, readable only by you).
 - **What it protects:** harbor still listens only on `127.0.0.1`. Accounts keep people who share this computer's browser apart. They don't protect against someone who can read your files in WSL.
@@ -134,7 +135,7 @@ The file is plain `KEY=value` lines. `#` starts a comment, values may be quoted,
 - The key is never shown, never added to the queue state, and never stored in the browser.
 - `.env` files are git-ignored here. Keep it that way, and keep the file private (`chmod 600 .env`).
 
-Values in the file fill the Download tab's fields only when this browser hasn't remembered its own value. To go back to the file's values, clear the site's data in the browser.
+With accounts, each user's own defaults win over these values. Without accounts, values in the file fill the Download tab's fields only when this browser hasn't remembered its own value. To go back to the file's values, clear the site's data in the browser.
 
 ## The page
 

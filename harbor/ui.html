@@ -375,6 +375,12 @@
       </form>
     </section>
     <section>
+      <h3>Your defaults</h3>
+      <p class="note">Quality, effort, deleting originals, the download folder and how the API key is sent are saved with your account as you change them, in any browser. The Chrome extension uses them too.</p>
+      <button id="prefsReset">Go back to harbor's defaults</button>
+      <div class="msg" id="prefsMsg"></div>
+    </section>
+    <section>
       <h3>Chrome extension</h3>
       <p class="note">The extension signs in with a token. Create one, paste it into the extension's popup, and revoke it here if the computer is lost.</p>
       <ul class="tokens" id="tokenList"></ul>
@@ -536,7 +542,7 @@ $("pickerUse").onclick = () => {
     if (!lines.includes(p)) lines.push(p);
     $("paths").value = lines.join("\n");
   } else {
-    $("dest").value = p; store.set("dest", p);
+    $("dest").value = p; store.set("dest", p); savePref({ download_dir: p });
   }
   $("picker").close();
 };
@@ -547,10 +553,11 @@ $("browseConvert").onclick = () => {
 $("browseDest").onclick = () => openPicker("download", $("dest").value.trim());
 
 /* ---------- convert form ---------- */
-$("qr").oninput = () => { $("qn").value = $("qr").value; convertNote(); };
-$("qn").oninput = () => { $("qr").value = $("qn").value; convertNote(); };
-$("del").onchange = convertNote;
-$("method").onchange = convertNote;
+const qualityPref = () => { const q = parseInt($("qn").value, 10); if (q >= 1 && q <= 100) savePref({ quality: q }); };
+$("qr").oninput = () => { $("qn").value = $("qr").value; convertNote(); qualityPref(); };
+$("qn").oninput = () => { $("qr").value = $("qn").value; convertNote(); qualityPref(); };
+$("del").onchange = () => { convertNote(); savePref({ delete_original: $("del").checked }); };
+$("method").onchange = () => { convertNote(); savePref({ method: +$("method").value }); };
 
 $("add").onclick = async () => {
   const paths = $("paths").value.split("\n").map(s => s.trim()).filter(Boolean);
@@ -580,13 +587,33 @@ $("authName").value = store.get("authName", "");
 if (store.get("apiKey")) { $("apiKey").value = store.get("apiKey"); $("rememberKey").checked = true; }
 
 let envKey = false;
+// With accounts, these fields are your own defaults, saved with your account ("harbor" and "defaults"
+// in the state already carry them). Without accounts, this browser remembers them, as before.
+let accountsOn = false, prefTimer = null, pendingPrefs = {};
+function savePref(changes) {
+  if (!accountsOn) return;
+  Object.assign(pendingPrefs, changes);
+  clearTimeout(prefTimer);
+  prefTimer = setTimeout(() => {
+    const body = { changes: pendingPrefs };
+    pendingPrefs = {};
+    api("/api/account/prefs", body).catch(e => say($("msg"), "Couldn't save your defaults: " + e.message, true));
+  }, 600);
+}
 function applyHarborDefaults(h) {
   if (!h) return;
-  // .env values fill fields this browser hasn't remembered its own value for.
-  if (store.get("dest") === null && h.download_dir) $("dest").value = h.download_dir;
-  if (store.get("authMode") === null && h.auth_mode) $("authMode").value = h.auth_mode;
-  if (store.get("authName") === null && h.auth_name) $("authName").value = h.auth_name;
-  $("del").checked = !!h.delete_original;
+  if (accountsOn) {
+    $("dest").value = h.download_dir || "";
+    $("authMode").value = h.auth_mode || "bearer";
+    $("authName").value = h.auth_name || "";
+    $("dlConvert").checked = h.convert_downloads !== false && has("convert");
+  } else {
+    // .env values fill fields this browser hasn't remembered its own value for.
+    if (store.get("dest") === null && h.download_dir) $("dest").value = h.download_dir;
+    if (store.get("authMode") === null && h.auth_mode) $("authMode").value = h.auth_mode;
+    if (store.get("authName") === null && h.auth_name) $("authName").value = h.auth_name;
+  }
+  $("del").checked = !!h.delete_original && has("delete_original");
   envKey = !!h.has_key;
   $("apiKey").placeholder = envKey ? "Using the key from .env" : "";
   $("envKeyNote").hidden = !envKey;
@@ -605,9 +632,9 @@ function convertNote() {
     ? `Uses the Convert tab's settings: quality ${$("qn").value || "–"}%, effort ${$("method").value}, ${$("del").checked ? "downloaded .zip deleted after verify" : "downloaded .zip kept"}.`
     : "Files are only saved.";
 }
-$("authMode").onchange = () => { store.set("authMode", $("authMode").value); authUI(); };
-$("authName").oninput = () => store.set("authName", $("authName").value.trim());
-$("dest").onchange = () => store.set("dest", $("dest").value.trim());
+$("authMode").onchange = () => { store.set("authMode", $("authMode").value); savePref({ auth_mode: $("authMode").value }); authUI(); };
+$("authName").oninput = () => { store.set("authName", $("authName").value.trim()); savePref({ auth_name: $("authName").value.trim() }); };
+$("dest").onchange = () => { store.set("dest", $("dest").value.trim()); savePref({ download_dir: $("dest").value.trim() }); };
 $("rememberKey").onchange = saveKey;
 $("apiKey").oninput = saveKey;
 $("showKey").onclick = () => {
@@ -615,7 +642,7 @@ $("showKey").onclick = () => {
   $("apiKey").type = show ? "text" : "password";
   $("showKey").textContent = show ? "Hide" : "Show";
 };
-$("dlConvert").onchange = convertNote;
+$("dlConvert").onchange = () => { convertNote(); savePref({ convert_downloads: $("dlConvert").checked }); };
 authUI();
 
 $("dlAdd").onclick = async () => {
@@ -634,6 +661,7 @@ $("dlAdd").onclick = async () => {
       auth: { mode, key: $("apiKey").value, name: $("authName").value.trim() },
     });
     store.set("dest", dest);
+    savePref({ download_dir: dest });
     say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + ".");
     $("urls").value = "";
     refresh();
@@ -724,6 +752,7 @@ function renderDownloads(st) {
 }
 
 function render(st) {
+  accountsOn = !!st.account;
   if (!defaultsSet) {
     $("qr").value = $("qn").value = st.defaults.quality;
     $("method").value = st.defaults.method ?? 4;
@@ -909,6 +938,15 @@ $("tokenList").onclick = async e => {
   const b = e.target.closest("[data-revoke]");
   if (!b || !confirm("Revoke this token? The extension using it stops working until it gets a new one.")) return;
   try { await api("/api/account/token-revoke", { id: +b.dataset.revoke }); refresh(); } catch (err) { say($("tokenMsg"), err.message, true); }
+};
+$("prefsReset").onclick = async () => {
+  const changes = Object.fromEntries(["quality", "method", "delete_original", "download_dir", "auth_mode", "auth_name", "convert_downloads"].map(k => [k, null]));
+  try {
+    await api("/api/account/prefs", { changes });
+    defaultsSet = false;  // fill the fields again from harbor's defaults
+    await refresh();
+    say($("prefsMsg"), "Back to harbor's defaults.");
+  } catch (e) { say($("prefsMsg"), e.message, true); }
 };
 $("signOut").onclick = async () => {
   try { await api("/api/account/logout", {}); } catch {}
