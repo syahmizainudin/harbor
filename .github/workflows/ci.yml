@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: # the release workflow runs this first
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  RUFF_VERSION: "0.17.5"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff==${RUFF_VERSION}"
+      - name: Lint
+        run: ruff check --output-format=github .
+      - name: Format
+        run: ruff format --check .
+
+  test:
+    name: test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+      - name: Install the pinned cbz-webp and dl-queue (public repos)
+        run: pip install .
+      - name: Check Pillow has WebP
+        run: python -c "from PIL import features; assert features.check('webp'), 'Pillow built without WebP'"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+  package:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Install the wheel in a clean venv and start the console
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/harbor --version
+          /tmp/smoke/bin/harbor ui -p 8902 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8902/api/state > /tmp/state.json && break; sleep 0.25; done
+          python -c "import json; s = json.load(open('/tmp/state.json')); assert {'jobs', 'downloads'} <= set(s), s"
+          curl -sf http://127.0.0.1:8902/ | grep -q "<title>Harbor</title>"
+          kill %1
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error

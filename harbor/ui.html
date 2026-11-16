@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harbor</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2f6fed; --accent-text: #fff; --ok: #16794c; --warn: #a15c00; --bad: #c0362c;
+    --run: #2f6fed; --bar: #e8edf7; --chip: #eef1f5; --hover: #f1f4f9; --shadow: 0 10px 30px rgba(16,24,40,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1f27; --text: #e6e9ef; --muted: #98a2b3; --line: #2a313c;
+      --accent: #5b8cff; --accent-text: #0b1020; --ok: #4cc38a; --warn: #f0a742; --bad: #ff6b5e;
+      --run: #5b8cff; --bar: #252c38; --chip: #232a35; --hover: #222833; --shadow: 0 10px 30px rgba(0,0,0,.5);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  .tab { border: none; background: none; border-radius: 0; padding: 8px 14px; color: var(--muted); font-weight: 600;
+         border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  .badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 999px;
+           background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 18px; text-align: center; }
+  .badge:empty { display: none; }
+  [hidden] { display: none !important; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label, .label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .label-row label { margin: 0; }
+  textarea, input[type=text], input[type=password], input[type=number], select {
+    padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  textarea { width: 100%; min-height: 64px; font: 13px ui-monospace, Menlo, Consolas, monospace; resize: vertical; }
+  .mono { font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  .field { display: flex; gap: 8px; }
+  .field input { flex: 1; min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 16px; margin-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; margin-top: 12px; }
+  .q { display: flex; align-items: center; gap: 10px; }
+  .q input[type=range] { width: 180px; }
+  .q input[type=number] { width: 64px; padding: 4px 6px; }
+  .check { display: flex; align-items: center; gap: 6px; font-weight: 400; margin: 0; }
+  button { border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 6px 12px;
+           border-radius: 8px; cursor: pointer; font: inherit; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:hover { filter: brightness(0.96); }
+  button.link { border: none; background: none; padding: 2px 4px; color: var(--accent); }
+  button.small { padding: 3px 10px; font-size: 13px; }
+  .msg { margin-top: 10px; min-height: 1.2em; color: var(--muted); }
+  .msg.err { color: var(--bad); }
+  .bar-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+  .chip b { color: var(--text); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; border-top: none; }
+  td.name { word-break: break-all; }
+  td.name .dir { color: var(--muted); font-size: 12px; }
+  .state { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .s-queued { color: var(--muted); } .s-running { color: var(--run); } .s-done { color: var(--ok); }
+  .s-skipped { color: var(--warn); } .s-failed { color: var(--bad); } .s-cancelled { color: var(--muted); }
+  .prog { height: 6px; background: var(--bar); border-radius: 3px; overflow: hidden; margin-top: 4px; width: 120px; }
+  .prog > i { display: block; height: 100%; background: var(--run); }
+  .prog.indet > i { width: 30% !important; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+  .size { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px; }
+  /* folder picker */
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text);
+           width: min(640px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .dlg-head, .dlg-foot { padding: 12px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .dlg-head { border-bottom: 1px solid var(--line); }
+  .dlg-foot { border-top: 1px solid var(--line); justify-content: space-between; }
+  .dlg-body { padding: 8px 16px; }
+  .shortcuts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .dirlist { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .dirlist li button { width: 100%; text-align: left; border: none; border-radius: 0; background: none; padding: 7px 10px; }
+  .dirlist li button:hover { background: var(--hover); filter: none; }
+  .dirlist li + li { border-top: 1px solid var(--line); }
+  .dirlist .empty { padding: 16px; }
+  @media (max-width: 720px) {
+    thead { display: none; }
+    tr { display: block; border-top: 1px solid var(--line); padding: 8px 0; }
+    td { display: block; border: none; padding: 2px 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Harbor</h1>
+  <p class="sub">Recompress images inside .zip / .cbz archives to WebP and save them as .cbz, or download files and convert them as they arrive.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert">Convert<span class="badge" id="badge-convert"></span></button>
+    <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download">Download<span class="badge" id="badge-download"></span></button>
+  </div>
+
+  <!-- ===================== Convert ===================== -->
+  <div id="pane-convert" role="tabpanel" aria-labelledby="tab-convert">
+    <section class="panel">
+      <div class="label-row">
+        <label for="paths">Folders or archive files (one per line)</label>
+        <button class="small" id="browseConvert" type="button">Open folder…</button>
+      </div>
+      <textarea id="paths" placeholder="/mnt/d/Comics&#10;C:\Comics\Series A"></textarea>
+      <div class="row">
+        <div class="q">
+          <label for="qr" style="margin:0">WebP quality</label>
+          <input type="range" id="qr" min="1" max="100">
+          <input type="number" id="qn" min="1" max="100"><span class="note">%</span>
+        </div>
+        <label class="check"><input type="checkbox" id="del" checked> Delete original .zip after the .cbz is verified</label>
+        <label class="check"><input type="checkbox" id="ovw"> Overwrite an existing .cbz</label>
+        <button class="primary" id="add">Add to queue</button>
+      </div>
+      <div class="msg" id="msg"></div>
+    </section>
+
+    <section class="panel">
+      <div class="bar-head">
+        <div class="stats" id="stats"></div>
+        <div class="actions">
+          <button id="pause">Pause</button>
+          <button id="cancelAll">Cancel all</button>
+          <button id="clear">Clear finished</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Archive</th><th>State</th><th>Quality</th><th>Size</th><th>Details</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="6" class="empty">Queue is empty.</td></tr></tbody>
+      </table>
+    </section>
+  </div>
+
+  <!-- ===================== Download ===================== -->
+  <div id="pane-download" role="tabpanel" aria-labelledby="tab-download" hidden>
+    <section class="panel">
+      <label for="urls">File URLs (one per line)</label>
+      <textarea id="urls" placeholder="https://example.com/files/Chapter%2001.zip"></textarea>
+
+      <div class="grid">
+        <div>
+          <label for="dest">Save to folder</label>
+          <div class="field">
+            <input type="text" id="dest" class="mono" placeholder="/mnt/d/Downloads/Comics">
+            <button class="small" id="browseDest" type="button">Open folder…</button>
+          </div>
+        </div>
+        <div>
+          <label for="authMode">API key sent as</label>
+          <div class="field">
+            <select id="authMode">
+              <option value="bearer">Authorization: Bearer &lt;key&gt;</option>
+              <option value="header">Custom header</option>
+              <option value="query">Query parameter</option>
+              <option value="none">No API key</option>
+            </select>
+            <input type="text" id="authName" class="mono" placeholder="X-API-Key" hidden aria-label="Header or parameter name">
+          </div>
+        </div>
+      </div>
+
+      <div class="grid" id="keyRow">
+        <div>
+          <label for="apiKey">API key</label>
+          <div class="field">
+            <input type="password" id="apiKey" class="mono" autocomplete="off" spellcheck="false">
+            <button class="small" id="showKey" type="button">Show</button>
+          </div>
+          <label class="check" style="margin-top:6px"><input type="checkbox" id="rememberKey"> Remember the key in this browser</label>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" id="dlConvert" checked> Convert .zip / .cbz downloads to WebP .cbz</label>
+        <span class="note" id="dlConvertNote"></span>
+        <button class="primary" id="dlAdd">Add to queue</button>
+      </div>
+      <div class="msg" id="dlMsg"></div>
+    </section>
+
+    <section class="panel">
+      <div class="bar-head">
+        <div class="stats" id="dlStats"></div>
+        <div class="actions">
+          <button id="dlPause">Pause</button>
+          <button id="dlCancelAll">Cancel all</button>
+          <button id="dlClear">Clear finished</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>File</th><th>State</th><th>Size</th><th>Details</th><th></th></tr></thead>
+        <tbody id="dlRows"><tr><td colspan="5" class="empty">No downloads yet.</td></tr></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<!-- ===================== Folder picker ===================== -->
+<dialog id="picker" aria-labelledby="pickerTitle">
+  <form method="dialog" class="dlg-head" id="pickerGo">
+    <strong id="pickerTitle" style="width:100%">Choose a folder</strong>
+    <button type="button" class="small" id="pickerUp" title="Parent folder">↑ Up</button>
+    <input type="text" id="pickerPath" class="mono" style="flex:1;min-width:0" aria-label="Folder path">
+    <button type="submit" class="small" value="go">Go</button>
+  </form>
+  <div class="dlg-body">
+    <div class="shortcuts" id="pickerShortcuts"></div>
+    <ul class="dirlist" id="pickerList"></ul>
+    <div class="msg" id="pickerMsg"></div>
+  </div>
+  <div class="dlg-foot">
+    <span class="note" id="pickerInfo"></span>
+    <div class="actions">
+      <button type="button" id="pickerCancel">Cancel</button>
+      <button type="button" class="primary" id="pickerUse">Use this folder</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d = null) { try { const v = localStorage.getItem("cbzwebp." + k); return v === null ? d : v; } catch { return d; } },
+  set(k, v) { try { v === null ? localStorage.removeItem("cbzwebp." + k) : localStorage.setItem("cbzwebp." + k, v); } catch {} },
+};
+let paused = false, dlPaused = false, defaultsSet = false;
+
+function fmt(n) {
+  if (!n) return "–";
+  const u = ["B","KB","MB","GB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function base(p) { return String(p || "").split("/").pop(); }
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function say(el, text, err) { el.textContent = text; el.className = "msg" + (err ? " err" : ""); }
+
+/* ---------- tabs ---------- */
+function showTab(name) {
+  for (const t of document.querySelectorAll(".tab")) {
+    const on = t.dataset.tab === name;
+    t.setAttribute("aria-selected", on);
+    $("pane-" + t.dataset.tab).hidden = !on;
+  }
+  store.set("tab", name);
+}
+for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
+showTab(store.get("tab", "convert") === "download" ? "download" : "convert");
+
+/* ---------- folder picker ---------- */
+let pickerTarget = null, pickerCurrent = null;
+async function pickerLoad(path) {
+  try {
+    const r = await api("/api/dirs?path=" + encodeURIComponent(path || ""));
+    pickerCurrent = r;
+    $("pickerPath").value = r.path;
+    $("pickerUp").disabled = !r.parent;
+    $("pickerShortcuts").innerHTML = r.shortcuts.map(s =>
+      `<button type="button" class="small" data-path="${esc(s.path)}">${esc(s.label)}</button>`).join("");
+    $("pickerList").innerHTML = r.dirs.length
+      ? r.dirs.map(d => `<li><button type="button" data-dir="${esc(d)}">📁 ${esc(d)}</button></li>`).join("")
+      : `<li class="empty">No subfolders.</li>`;
+    $("pickerInfo").textContent = r.files ? `${r.files} .zip/.cbz file(s) in this folder` : "No .zip/.cbz files directly in this folder";
+    say($("pickerMsg"), "");
+  } catch (e) { say($("pickerMsg"), e.message, true); }
+}
+function openPicker(target, start) {
+  pickerTarget = target;
+  $("pickerTitle").textContent = target === "convert" ? "Choose a folder to convert" : "Choose where to save downloads";
+  $("picker").showModal();
+  pickerLoad(start || store.get("lastDir", ""));
+}
+$("pickerShortcuts").onclick = ev => { const b = ev.target.closest("button[data-path]"); if (b) pickerLoad(b.dataset.path); };
+$("pickerList").onclick = ev => {
+  const b = ev.target.closest("button[data-dir]");
+  if (b && pickerCurrent) pickerLoad(pickerCurrent.path.replace(/\/$/, "") + "/" + b.dataset.dir);
+};
+$("pickerUp").onclick = () => pickerCurrent?.parent && pickerLoad(pickerCurrent.parent);
+$("pickerGo").onsubmit = ev => { ev.preventDefault(); pickerLoad($("pickerPath").value); };
+$("pickerCancel").onclick = () => $("picker").close();
+$("pickerUse").onclick = () => {
+  if (!pickerCurrent) return;
+  const p = pickerCurrent.path;
+  store.set("lastDir", p);
+  if (pickerTarget === "convert") {
+    const lines = $("paths").value.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!lines.includes(p)) lines.push(p);
+    $("paths").value = lines.join("\n");
+  } else {
+    $("dest").value = p; store.set("dest", p);
+  }
+  $("picker").close();
+};
+$("browseConvert").onclick = () => {
+  const lines = $("paths").value.split("\n").map(s => s.trim()).filter(Boolean);
+  openPicker("convert", lines[lines.length - 1]);
+};
+$("browseDest").onclick = () => openPicker("download", $("dest").value.trim());
+
+/* ---------- convert form ---------- */
+$("qr").oninput = () => { $("qn").value = $("qr").value; convertNote(); };
+$("qn").oninput = () => { $("qr").value = $("qn").value; convertNote(); };
+$("del").onchange = convertNote;
+
+$("add").onclick = async () => {
+  const paths = $("paths").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const quality = parseInt($("qn").value, 10);
+  if (!paths.length) return say($("msg"), "Enter at least one folder.", true);
+  if (!(quality >= 1 && quality <= 100)) return say($("msg"), "Quality must be 1–100.", true);
+  try {
+    const r = await api("/api/add", { paths, quality, delete_original: $("del").checked, overwrite: $("ovw").checked });
+    say($("msg"), `Queued ${r.added} archive(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + ".");
+    refresh();
+  } catch (e) { say($("msg"), e.message, true); }
+};
+$("pause").onclick = async () => { await api("/api/pause", { paused: !paused }); refresh(); };
+$("clear").onclick = async () => { await api("/api/clear", {}); refresh(); };
+$("cancelAll").onclick = async () => {
+  if (confirm("Cancel every queued and running conversion?")) { await api("/api/cancel-all", {}); refresh(); }
+};
+$("rows").onclick = async ev => {
+  const b = ev.target.closest("button[data-act]"); if (!b) return;
+  await api("/api/" + b.dataset.act, { id: +b.dataset.id }); refresh();
+};
+
+/* ---------- download form ---------- */
+$("dest").value = store.get("dest", "");
+$("authMode").value = store.get("authMode", "bearer");
+$("authName").value = store.get("authName", "");
+if (store.get("apiKey")) { $("apiKey").value = store.get("apiKey"); $("rememberKey").checked = true; }
+
+function authUI() {
+  const m = $("authMode").value;
+  $("authName").hidden = !(m === "header" || m === "query");
+  $("authName").placeholder = m === "query" ? "api_key" : "X-API-Key";
+  $("keyRow").hidden = m === "none";
+}
+function saveKey() { store.set("apiKey", $("rememberKey").checked && $("apiKey").value ? $("apiKey").value : null); }
+function convertNote() {
+  $("dlConvertNote").textContent = $("dlConvert").checked
+    ? `Uses the Convert tab's settings: quality ${$("qn").value || "–"}%, ${$("del").checked ? "downloaded .zip deleted after verify" : "downloaded .zip kept"}.`
+    : "Files are only saved.";
+}
+$("authMode").onchange = () => { store.set("authMode", $("authMode").value); authUI(); };
+$("authName").oninput = () => store.set("authName", $("authName").value.trim());
+$("dest").onchange = () => store.set("dest", $("dest").value.trim());
+$("rememberKey").onchange = saveKey;
+$("apiKey").oninput = saveKey;
+$("showKey").onclick = () => {
+  const show = $("apiKey").type === "password";
+  $("apiKey").type = show ? "text" : "password";
+  $("showKey").textContent = show ? "Hide" : "Show";
+};
+$("dlConvert").onchange = convertNote;
+authUI();
+
+$("dlAdd").onclick = async () => {
+  const urls = $("urls").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const dest = $("dest").value.trim();
+  const mode = $("authMode").value;
+  if (!urls.length) return say($("dlMsg"), "Enter at least one URL.", true);
+  if (!dest) return say($("dlMsg"), "Choose a folder to save to.", true);
+  if (mode !== "none" && !$("apiKey").value) return say($("dlMsg"), "Enter the API key, or choose “No API key”.", true);
+  if ((mode === "header" || mode === "query") && !$("authName").value.trim())
+    return say($("dlMsg"), `Enter the ${mode === "header" ? "header" : "parameter"} name.`, true);
+  try {
+    const r = await api("/api/download/add", {
+      urls, dest,
+      after: { convert: $("dlConvert").checked, quality: parseInt($("qn").value, 10), delete_original: $("del").checked },
+      auth: { mode, key: $("apiKey").value, name: $("authName").value.trim() },
+    });
+    store.set("dest", dest);
+    say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + ".");
+    $("urls").value = "";
+    refresh();
+  } catch (e) { say($("dlMsg"), e.message, true); }
+};
+$("dlPause").onclick = async () => { await api("/api/download/pause", { paused: !dlPaused }); refresh(); };
+$("dlClear").onclick = async () => { await api("/api/download/clear", {}); refresh(); };
+$("dlCancelAll").onclick = async () => {
+  if (confirm("Cancel every queued and running download?")) { await api("/api/download/cancel-all", {}); refresh(); }
+};
+$("dlRows").onclick = async ev => {
+  const b = ev.target.closest("button[data-act]"); if (!b) return;
+  if (b.dataset.act === "goto") { showTab("convert"); return; }
+  await api("/api/download/" + b.dataset.act, { id: +b.dataset.id }); refresh();
+};
+
+/* ---------- rendering ---------- */
+function counts(jobs) { const c = {}; for (const j of jobs) c[j.state] = (c[j.state] || 0) + 1; return c; }
+function chipsFor(c) {
+  return ["queued","running","done","skipped","failed","cancelled"].filter(k => c[k]).map(k => `<span class="chip">${k} <b>${c[k]}</b></span>`);
+}
+function actionBtn(j) {
+  return (j.state === "queued" || j.state === "running") ? `<button class="link" data-act="cancel" data-id="${j.id}">Cancel</button>`
+       : (j.state === "failed" || j.state === "cancelled") ? `<button class="link" data-act="retry" data-id="${j.id}">Retry</button>` : "";
+}
+
+function renderConvert(st) {
+  paused = st.paused;
+  $("pause").textContent = paused ? "Resume" : "Pause";
+  const c = counts(st.jobs); let bin = 0, bout = 0;
+  for (const j of st.jobs) if (j.state === "done") { bin += j.bytes_in; bout += j.bytes_out; }
+  const chips = chipsFor(c);
+  if (bin) chips.push(`<span class="chip">saved <b>${fmt(bin - bout)}</b> (${Math.round(100 * (1 - bout / bin))}%)</span>`);
+  chips.push(`<span class="chip">${st.workers} archive worker(s) · ${st.image_threads} image threads${paused ? " · <b>paused</b>" : ""}</span>`);
+  $("stats").innerHTML = chips.join("");
+  $("badge-convert").textContent = (c.queued || 0) + (c.running || 0) || "";
+
+  if (!st.jobs.length) { $("rows").innerHTML = `<tr><td colspan="6" class="empty">Queue is empty.</td></tr>`; return; }
+  $("rows").innerHTML = st.jobs.map(j => {
+    const dir = j.path.slice(0, j.path.length - j.name.length);
+    const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+    const prog = j.state === "running" ? `<div class="prog"><i style="width:${pct}%"></i></div><span class="note">${j.done}/${j.total}</span>` : "";
+    const size = j.bytes_out ? `${fmt(j.bytes_in)} → ${fmt(j.bytes_out)}` : (j.bytes_in ? fmt(j.bytes_in) : "–");
+    let det = esc(j.message);
+    if (j.deleted) det += `<div class="note">deleted ${esc(base(j.deleted))}</div>`;
+    if (j.kept && j.kept.length) det += `<div class="note" title="${esc(j.kept.join("\n"))}">kept as-is: ${esc(j.kept.slice(0,3).join(", "))}${j.kept.length > 3 ? "…" : ""}</div>`;
+    return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(dir)}</div></td>
+      <td><span class="state s-${j.state}">${j.state}</span>${prog}</td>
+      <td>${j.quality}%${j.delete_original ? "" : ' <span class="note">keep</span>'}</td>
+      <td class="size">${size}</td><td>${det}</td><td>${actionBtn(j)}</td></tr>`;
+  }).join("");
+}
+
+function renderDownloads(st) {
+  dlPaused = st.downloads_paused;
+  $("dlPause").textContent = dlPaused ? "Resume" : "Pause";
+  const jobs = st.downloads, c = counts(jobs);
+  const got = jobs.filter(j => j.state === "done").reduce((s, j) => s + j.done, 0);
+  const chips = chipsFor(c);
+  if (got) chips.push(`<span class="chip">downloaded <b>${fmt(got)}</b></span>`);
+  chips.push(`<span class="chip">${st.download_workers} download(s) at a time${dlPaused ? " · <b>paused</b>" : ""}</span>`);
+  $("dlStats").innerHTML = chips.join("");
+  $("badge-download").textContent = (c.queued || 0) + (c.running || 0) || "";
+
+  if (!jobs.length) { $("dlRows").innerHTML = `<tr><td colspan="5" class="empty">No downloads yet.</td></tr>`; return; }
+  const convById = Object.fromEntries(st.jobs.map(j => [j.id, j]));
+  $("dlRows").innerHTML = jobs.map(j => {
+    let prog = "";
+    if (j.state === "running") {
+      prog = j.total
+        ? `<div class="prog"><i style="width:${Math.round(100 * j.done / j.total)}%"></i></div><span class="note">${Math.round(100 * j.done / j.total)}%</span>`
+        : `<div class="prog indet"><i></i></div>`;
+    }
+    const size = j.state === "running" ? `${fmt(j.done)}${j.total ? " / " + fmt(j.total) : ""}` : (j.done ? fmt(j.done) : "–");
+    let det = esc(j.message);
+    if (j.output) det += `<div class="note">${esc(j.output)}</div>`;
+    if (j.linked_id) {
+      const cj = convById[j.linked_id];
+      det += cj
+        ? `<div class="note">convert: <span class="state s-${cj.state}">${cj.state}</span> ${cj.state === "running" ? `${cj.done}/${cj.total}` : esc(cj.message)} <button class="link" data-act="goto">view</button></div>`
+        : `<div class="note">convert job cleared</div>`;
+    }
+    const auth = j.auth_mode !== "none" ? ` <span class="note">· key: ${esc(j.auth_mode)}</span>` : "";
+    return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(j.url)}</div><div class="dir">→ ${esc(j.dest_dir)}${auth}</div></td>
+      <td><span class="state s-${j.state}">${j.state}</span>${prog}</td>
+      <td class="size">${size}</td><td>${det}</td><td>${actionBtn(j)}</td></tr>`;
+  }).join("");
+}
+
+function render(st) {
+  if (!defaultsSet) { $("qr").value = $("qn").value = st.defaults.quality; defaultsSet = true; convertNote(); }
+  renderConvert(st);
+  renderDownloads(st);
+}
+
+async function refresh() {
+  try { render(await api("/api/state")); }
+  catch (e) { say($("msg"), "Lost connection to the server: " + e.message, true); }
+}
+refresh(); setInterval(refresh, 1000);
+</script>
+</body>
+</html>

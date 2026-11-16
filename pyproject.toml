@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harbor"
+dynamic = ["version"]
+description = "Download files and convert .zip/.cbz archives to WebP .cbz from one local web page"
+readme = "README.md"
+requires-python = ">=3.10"
+# Pinned by tag. To pick up a fix in either tool, release it there and bump the tag here.
+dependencies = [
+  "cbz-webp @ git+https://github.com/syahmizainudin/cbz-webp@v0.1.0",
+  "dl-queue @ git+https://github.com/syahmizainudin/dl-queue@v0.1.0",
+]
+
+[project.scripts]
+harbor = "harbor.cli:main"
+
+[tool.setuptools]
+packages = ["harbor"]
+
+[tool.setuptools.package-data]
+harbor = ["ui.html"]
+
+[tool.setuptools.dynamic]
+version = { attr = "harbor.__version__" }
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "BLE", "UP", "RUF"]
+ignore = [
+  "RUF001",  # ambiguous unicode in strings: the "…" in messages is intended
+]
