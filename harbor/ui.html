@@ -193,6 +193,9 @@
   <div class="side-acct" id="acct" hidden>
     <button class="side-btn" id="acctBtn" title="Your account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="txt" id="acctName"></span></button>
   </div>
+  <div class="side-acct" id="signInBox" hidden>
+    <button class="side-btn" id="signIn" title="Sign in to convert, download and keep favourites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg><span class="txt">Sign in</span></button>
+  </div>
   <div class="side-foot"><button id="collapse" title="Collapse the sidebar"><span aria-hidden="true">«</span> <span class="txt">Collapse</span></button></div>
 </nav>
 
@@ -457,7 +460,9 @@ showTab(["download", "library", "admin"].includes(store.get("tab")) ? store.get(
 if (store.get("tab") === "admin") $("tab-admin").hidden = false;
 
 /* ---------- permissions ---------- */
-// Without accounts there is no account in the state: everything is allowed.
+// Without accounts there is no account in the state: everything is allowed. Signed out (account: null),
+// only the library can be read.
+const GUEST_PERMS = ["library.read"];
 let perms = null;
 const has = p => perms === null || perms.includes(p);
 const TAB_NEEDS = {
@@ -752,7 +757,7 @@ function renderDownloads(st) {
 }
 
 function render(st) {
-  accountsOn = !!st.account;
+  accountsOn = "account" in st;
   if (!defaultsSet) {
     $("qr").value = $("qn").value = st.defaults.quality;
     $("method").value = st.defaults.method ?? 4;
@@ -763,7 +768,7 @@ function render(st) {
   renderConvert(st);
   renderDownloads(st);
   renderAccount(st.account);
-  applyPerms(st.account ? st.account.perms : null);
+  applyPerms(st.account ? st.account.perms : accountsOn ? GUEST_PERMS : null);
   renderAdmin(st);
 }
 
@@ -902,6 +907,7 @@ $("seSave").onclick = async () => {
 let account = null;
 function renderAccount(a) {
   $("acct").hidden = !a;
+  $("signInBox").hidden = !(accountsOn && !a);
   if (!a) return;
   if (JSON.stringify(a) === JSON.stringify(account)) return;
   account = a;
@@ -913,6 +919,7 @@ function renderAccount(a) {
     <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
 }
 $("acctBtn").onclick = () => { say($("pwMsg"), ""); say($("tokenMsg"), ""); $("tokenShow").hidden = true; $("acctDlg").showModal(); };
+$("signIn").onclick = () => { location.href = "/login"; };
 $("acctClose").onclick = () => $("acctDlg").close();
 $("pwForm").onsubmit = async e => {
   e.preventDefault();

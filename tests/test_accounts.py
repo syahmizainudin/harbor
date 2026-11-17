@@ -169,17 +169,63 @@ class SignInHttpTests(unittest.TestCase):
         self.assertEqual(status, 200, d)
         return h["Set-Cookie"].split(";")[0].split("=", 1)[1]
 
-    def test_signed_out_gets_only_the_sign_in_page(self):
-        status, h, _ = self.req("GET", "/")
-        self.assertEqual((status, h["Location"]), (303, "/login"))
-        self.assertEqual(self.req("GET", "/library")[0], 303)
-        status, _, page = self.req("GET", "/login")
-        self.assertEqual(status, 200)
-        self.assertIn(b"Sign in", page)
+    def test_signed_out_can_read_the_library_and_nothing_else(self):
+        for path in ("/", "/library", "/login"):
+            self.assertEqual(self.req("GET", path)[0], 200, path)
+        self.assertIn(b"Sign in", self.req("GET", "/login")[2])
         self.assertEqual(self.req("GET", "/api/account/status")[2], {"accounts": True, "signed_in": False})
-        for path in ("/api/state", "/api/dirs", "/api/library/series"):
-            self.assertEqual(self.req("GET", path)[0], 401, path)
-        self.assertEqual(self.req("POST", "/api/add", {"paths": ["/tmp"]})[0], 401)
+        self.assertEqual(self.req("GET", "/api/library/series")[0], 200)
+        self.assertEqual(self.req("GET", "/api/library/roots")[0], 403)  # library.manage
+        self.assertEqual(self.req("GET", "/api/dirs")[0], 401)
+        for path, body in (
+            ("/api/add", {"paths": ["/tmp"]}),
+            ("/api/download/add", {"urls": ["http://127.0.0.1:1/a.zip"], "dest_dir": "/tmp"}),
+            ("/api/clear", {}),
+            ("/api/library/favourite", {"kind": "book", "id": 1}),
+            ("/api/library/edit-book", {"id": 1, "changes": {}}),
+            ("/api/library/scan", {}),
+            ("/api/account/prefs", {"changes": {}}),
+            ("/api/account/password", {"current": PW, "new": "x" * 9}),
+            ("/api/admin/user-add", {"name": "Eve", "password": PW}),
+        ):
+            self.assertEqual(self.req("POST", path, body)[0], 401, path)
+
+    def test_signed_out_state_hides_jobs_and_settings(self):
+        sid = self.login()
+        src = self.dir / "in" / "x.zip"
+        src.parent.mkdir()
+        make_zip(src, comic_entries())
+        self.cq.set_paused(True)
+        self.assertEqual(self.req("POST", "/api/add", {"paths": [str(src)]}, cookie=sid)[0], 200)
+        status, _, st = self.req("GET", "/api/state")
+        self.assertEqual(status, 200)
+        self.assertEqual((st["account"], st["jobs"], st["downloads"]), (None, [], []))
+        self.assertEqual(st["library_can"], {"edit": False, "manage": False})
+        self.assertEqual(set(st["harbor"]), {"version"})
+        self.assertNotIn("x.zip", json.dumps(st))
+        self.assertNotIn(str(self.dir), json.dumps(st))  # no folder names at all
+        self.assertNotIn("admin_users", st)
+        # Signed in, the job is there.
+        self.assertEqual(len(self.req("GET", "/api/state", cookie=sid)[2]["jobs"]), 1)
+
+    def test_signed_out_reading_is_not_saved(self):
+        bid = self.req("GET", "/api/library/search")[2]["items"][0]["id"]
+        for action, body in (
+            ("progress", {"id": bid, "page": 1}),
+            ("prefs", {"changes": {"text_size": 120}}),
+            ("hide-continue", {"id": bid}),
+        ):
+            status, _, answer = self.req("POST", f"/api/library/{action}", body)
+            self.assertEqual((status, answer), (200, {"ok": True, "saved": False}), action)
+        self.assertIsNone(self.req("GET", f"/api/library/book?id={bid}")[2]["progress"])
+        self.assertEqual(self.req("GET", "/api/library/continue")[2], [])
+        ann = self.login()
+        self.assertEqual(self.req("GET", "/api/library/continue", cookie=ann)[2], [])
+
+    def test_a_bad_token_is_refused_not_a_guest(self):
+        # The extension learns it needs a token from a 401 on /api/state.
+        self.assertEqual(self.req("GET", "/api/state", headers={"X-Harbor-Token": "nope"})[0], 401)
+        self.assertEqual(self.req("GET", "/api/state", headers={"Origin": EXTENSION_ORIGIN})[0], 401)
 
     def test_sign_in_cookie_and_state(self):
         status, h, d = self.req("POST", "/api/account/login", {"name": "ann", "password": PW})
@@ -218,7 +264,8 @@ class SignInHttpTests(unittest.TestCase):
         status, h, _ = self.req("POST", "/api/account/logout", {}, cookie=sid)
         self.assertEqual(status, 200)
         self.assertIn("Max-Age=0", h["Set-Cookie"])
-        self.assertEqual(self.req("GET", "/api/state", cookie=sid)[0], 401)
+        self.assertIsNone(self.req("GET", "/api/state", cookie=sid)[2]["account"])  # a guest now
+        self.assertEqual(self.req("POST", "/api/clear", {}, cookie=sid)[0], 401)
 
     def test_library_data_is_per_user(self):
         ann, bo = self.login("Ann"), self.login("Bo")
@@ -255,8 +302,8 @@ class SignInHttpTests(unittest.TestCase):
         self.assertEqual(bad[0], 400)
         ok = self.req("POST", "/api/account/password", {"current": PW, "new": "new password"}, cookie=sid)
         self.assertEqual(ok[0], 200)
-        self.assertEqual(self.req("GET", "/api/state", cookie=sid)[0], 200)
-        self.assertEqual(self.req("GET", "/api/state", cookie=other)[0], 401)
+        self.assertEqual(self.req("GET", "/api/state", cookie=sid)[2]["account"]["name"], "Bo")
+        self.assertIsNone(self.req("GET", "/api/state", cookie=other)[2]["account"])
 
     def test_own_defaults(self):
         ann, bo = self.login("Ann"), self.login("Bo")

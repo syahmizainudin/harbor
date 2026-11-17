@@ -9,7 +9,9 @@ The two tools' APIs know nothing about users. harbor wraps them (``GuardedQueueA
   * without ``jobs.see_all`` a user sees, cancels and retries only their own jobs, and can't use
     the queue-wide actions (pause, cancel all, clear finished).
 
-Without accounts there is no current user, and everything passes straight through.
+Without accounts there is no current user, and everything passes straight through. With accounts,
+no current user means a signed-out visitor (a guest): they may read the library and nothing else
+(``guest_may``, ``guest_can``), and see no jobs.
 """
 
 from __future__ import annotations
@@ -22,12 +24,59 @@ from cbzwebp.web import current_user
 SEE_ALL = "jobs.see_all"
 QUEUE_WIDE = ("cancel-all", "clear", "pause")
 DENIED = {"error": "you don't have permission for this"}
+SIGN_IN = {"error": "sign in first"}
+
+# What a guest (signed out, with accounts on) may do: open the page, read its state (with no jobs
+# and no settings) and read the library. Their reading progress and reader settings are accepted
+# but not saved (``GuestSafeLibraryAPI``), so turning a page never sends them to sign in.
+# Favourites, editing and everything else need an account.
+GUEST_PERMS = frozenset({"library.read"})
+GUEST_PAGES = frozenset({"/", "/library", "/api/state"})
+LIBRARY_PREFIX = "/api/library/"
+GUEST_LIBRARY_POSTS = frozenset(
+    {"progress", "clear-progress", "reader-settings", "prefs", "hide-continue", "clear-continue"}
+)
 
 
 def can(permission: str) -> bool:
     """Whether the request's user has a permission. True without accounts (no user)."""
     user = current_user()
     return user is None or permission in user.get("perms", ())
+
+
+def guest_can(permission: str) -> bool:
+    """``can`` with accounts on: a guest has only ``GUEST_PERMS``."""
+    user = current_user()
+    return permission in (user.get("perms", ()) if user else GUEST_PERMS)
+
+
+def guest_may(method: str, path: str) -> bool:
+    """Whether a signed-out request may go through (see ``GUEST_PERMS``)."""
+    action = path[len(LIBRARY_PREFIX) :] if path.startswith(LIBRARY_PREFIX) else None
+    if method == "GET":
+        return path in GUEST_PAGES or (action is not None and "/" not in action)
+    return method == "POST" and action in GUEST_LIBRARY_POSTS
+
+
+class GuestSafeLibraryAPI:
+    """cbz-shelf's LibraryAPI with accounts on: a guest's reading progress, reader settings and
+    Continue-reading changes are answered but not saved (no shared guest data)."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def state(self) -> dict:
+        return self.inner.state()
+
+    def get(self, action: str, query: dict):
+        return self.inner.get(action, query)
+
+    def post(self, action: str, body: dict):
+        if current_user() is None:
+            if action in GUEST_LIBRARY_POSTS:
+                return 200, {"ok": True, "saved": False}
+            return 401, SIGN_IN
+        return self.inner.post(action, body)
 
 
 def may_browse_folders(user) -> bool:
@@ -67,13 +116,18 @@ class JobOwners:
 class GuardedQueueAPI:
     """Wraps ConvertAPI (``kind="convert"``) or DownloadAPI (``kind="download"``)."""
 
-    def __init__(self, inner, queue, kind: str, owners: JobOwners):
+    def __init__(self, inner, queue, kind: str, owners: JobOwners, guests: bool = False):
+        """``guests``: accounts are on, so no current user means a signed-out visitor."""
         self.inner, self.queue, self.kind, self.owners = inner, queue, kind, owners
+        self.guests = guests
         self.list_key = "jobs" if kind == "convert" else "downloads"
 
     def state(self) -> dict:
         st = self.inner.state()
         user = current_user()
+        if user is None and self.guests:  # a guest sees no jobs (names, URLs, folders)
+            st[self.list_key] = []
+            return st
         if user is not None and self.kind == "convert" and "defaults" in st:  # their own quality and effort
             prefs = user.get("prefs", {})
             st["defaults"] = {**st["defaults"], **{k: prefs[k] for k in ("quality", "method") if k in prefs}}
@@ -101,7 +155,7 @@ class GuardedQueueAPI:
     def post(self, action: str, body: dict):
         user = current_user()
         if user is None:
-            return self.inner.post(action, body)
+            return (401, SIGN_IN) if self.guests else self.inner.post(action, body)
         perms = set(user.get("perms", ()))
         if action == "add":
             refusal = self._add_refusal(body, perms)

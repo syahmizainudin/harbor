@@ -24,7 +24,7 @@ That also installs cbz-webp and dl-queue at the versions pinned in `pyproject.to
 
 ## Accounts
 
-harbor asks everyone to sign in. Make the first account, an admin, before starting it:
+Anyone can browse and read the library without signing in. Converting, downloading, favourites and everything else need an account, and signed out, reading progress isn't saved. Make the first account, an admin, before starting it:
 
 ```bash
 harbor user add YOUR-NAME --admin     # asks for a password (8 or more characters)
@@ -43,7 +43,7 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
 
 `harbor user add` takes `--role NAME` (default Member). The last admin who can sign in can't be disabled, removed or given another role. Each user has their own reading progress, Continue reading, favourites and reader settings in the Library tab. Book and series details are shared. Reading progress from before accounts existed goes to the first admin when harbor starts.
 
-- **Signing in:** a signed-out visit goes to the sign-in page. A session lasts `HARBOR_SESSION_DAYS` (30) days after it was last used. After 5 wrong passwords for a name, that name is locked for 15 minutes.
+- **Signing in:** a signed-out visit shows the Library tab and a **Sign in** button. A session lasts `HARBOR_SESSION_DAYS` (30) days after it was last used. After 5 wrong passwords for a name, that name is locked for 15 minutes.
 - **Your account** (bottom of the sidebar): change your password, which signs out your other browsers, make tokens for the Chrome extension, and sign out.
 - **Roles:** every account has one. Admin has every permission and can't be changed. Member (convert, download, delete originals, read the library) and Reader (read the library) come built in, and admins can add more. Tabs and buttons you can't use are hidden, and harbor refuses them anyway.
 
@@ -90,7 +90,7 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_EXTENSION_ORIGINS` | the Harbor extension | Origins allowed besides the page: exact origins, comma-separated, or `off` |
 | | `HARBOR_LIBRARY_DB` | `~/.local/share/harbor/library.db` | The Library tab's database (folders, metadata edits, reading progress) |
 | | `HARBOR_LIBRARY_SCAN` | `true` | Rescan library folders when harbor starts |
-| | `HARBOR_ACCOUNTS` | `true` | Require signing in. `false` turns accounts off: anyone who can reach the page can use it |
+| | `HARBOR_ACCOUNTS` | `true` | Require signing in for everything but reading the library. `false` turns accounts off: anyone who can reach the page can use it |
 | | `HARBOR_ACCOUNTS_DB` | `~/.local/share/harbor/harbor.db` | Accounts, sessions and extension tokens |
 | | `HARBOR_SESSION_DAYS` | 30 | How long a sign-in lasts after it was last used |
 | | `HARBOR_SECURE_COOKIE` | `false` | Mark the session cookie `Secure`. Only when harbor is served over HTTPS |

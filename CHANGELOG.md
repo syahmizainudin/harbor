@@ -4,6 +4,7 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- **The library is open without signing in:** a signed-out visitor gets the Library tab and can browse and read. Converting, downloading, favourites, editing and the other tabs still need an account (a star sends you to sign in). Signed out, reading progress and reader settings aren't saved, and `/api/state` shows no jobs and no settings. A request with an extension token that doesn't work still gets 401.
 - **Your own defaults:** Convert and Download settings (quality, effort, delete original, download folder, auth mode and name, convert downloads) are saved per account as you change them, and `/api/state` gives each user theirs, so the Chrome extension uses them too. **Account → Go back to harbor's defaults** clears them. The API key stays server-wide.
 - Text reader settings are saved per account (cbz-shelf 0.4.1).
 - Pins cbz-shelf 0.4.1.

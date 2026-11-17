@@ -169,13 +169,16 @@ USER_PAGE_PREFS = ("download_dir", "auth_mode", "auth_name", "delete_original", 
 class HarborAPI:
     """Page defaults from settings, at /api/harbor/ (state only; no actions)."""
 
-    def __init__(self, settings: Settings, notes: list[str] | None = None):
+    def __init__(self, settings: Settings, notes: list[str] | None = None, guests: bool = False):
         self.settings = settings
         self.notes = notes if notes is not None else []  # the same list: the CLI fills it after start
+        self.guests = guests  # accounts are on: no current user is a signed-out visitor
 
     def state(self) -> dict:
         from cbzwebp.web import current_user
 
+        if self.guests and current_user() is None:  # no folders, key names or notes for guests
+            return {"harbor": {"version": __version__}}
         defaults = {**self.settings.page_defaults(), "convert_downloads": True}
         user = current_user()
         if user:  # the signed-in user's own defaults win over the .env ones
@@ -207,35 +210,39 @@ def serve_harbor(
 ) -> ThreadingHTTPServer:
     """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
     with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab).
-    With ``accounts``, everything but the sign-in page needs a signed-in user (``/api/account/``)."""
+    With ``accounts``, converting, downloading, favourites and the rest need a signed-in user
+    (``/api/account/``); signed out, the page and the library can be read (``perms.guest_may``)."""
     from .accounts import AccountAPI, HarborSignIn
     from .admin import AdminAPI
-    from .perms import GuardedQueueAPI, JobOwners, can
+    from .perms import GuardedQueueAPI, GuestSafeLibraryAPI, JobOwners, can, guest_can
 
     settings = settings or Settings()
     owners = owners if owners is not None else JobOwners()
+    guests = accounts is not None
     apis = {
         "/api/": GuardedQueueAPI(
             ConvertAPI(convert_queue, {"quality": settings.quality, "method": settings.method}),
             convert_queue,
             "convert",
             owners,
+            guests,
         ),
         "/api/download/": GuardedQueueAPI(
-            EnvKeyDownloadAPI(download_queue, settings.api_key), download_queue, "download", owners
+            EnvKeyDownloadAPI(download_queue, settings.api_key), download_queue, "download", owners, guests
         ),
-        "/api/harbor/": HarborAPI(settings, notes),
+        "/api/harbor/": HarborAPI(settings, notes, guests),
     }
     pages = {}
     if library is not None:
         try:
-            apis["/api/library/"] = LibraryAPI(library, user_of=_user_id, can=can)
+            library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can)
         except TypeError:  # cbz-shelf < 0.4.0 (dependencies not reinstalled yet): no library permissions
             print(
                 "harbor: WARNING: the installed cbz-shelf has no permissions; reinstall the dependencies",
                 flush=True,
             )
-            apis["/api/library/"] = LibraryAPI(library, user_of=_user_id)
+            library_api = LibraryAPI(library, user_of=_user_id)
+        apis["/api/library/"] = GuestSafeLibraryAPI(library_api) if guests else library_api
         pages["/library"] = LIBRARY_HTML
     auth = None
     if accounts is not None:

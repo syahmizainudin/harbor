@@ -36,6 +36,7 @@ Status: phase 1 released (cbz-shelf 0.3.0). Phase 2 released (cbz-webp 0.4.0, dl
 - harbor's own database (`~/.local/share/harbor/harbor.db`, versioned migrations like cbz-shelf): `users(id, name, pass_hash, role_id, disabled)`, `sessions`, `tokens`.
 - Passwords: `hashlib.scrypt` with a per-user salt. Sessions: random token in an `HttpOnly; SameSite=Strict` cookie, stored hashed, expiring. Sign-in attempts are rate-limited.
 - Every page and API needs a session, GETs included. `/` and `/library` go to the sign-in page.
+  - Changed later: signed out, the page and the library can be read (not favourites; progress isn't saved). Converting, downloading and the rest still need a session. See AGENTS.md, "Guests".
 - First admin from the command line: `harbor user add NAME --admin`. No open setup page, so there is never an unauthenticated window.
 - Existing progress (user 0) is given to the first admin.
 - The browser extension can't use the cookie. Each user can create a token on their account page and paste it into the extension, which sends it as a header. The extension's origin allowlist stays.

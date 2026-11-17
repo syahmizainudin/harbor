@@ -516,9 +516,17 @@ class HarborSignIn:
 
     def __init__(self, accounts: Accounts):
         self.accounts = accounts
+        self._request = threading.local()  # one thread per request: what ``user`` saw
 
     def public(self, method: str, path: str) -> bool:
-        return (method, path) in self.PUBLIC
+        """The sign-in page and action, and what a guest may read (``perms.guest_may``). A request
+        with a token or from the extension that isn't signed in is refused, never a guest, so the
+        extension still learns it needs a token."""
+        from .perms import guest_may
+
+        if (method, path) in self.PUBLIC:
+            return True
+        return not getattr(self._request, "machine", False) and guest_may(method, path)
 
     def allows(self, user, method: str, path: str) -> bool:
         """Permissions on what the console server serves itself."""
@@ -528,6 +536,8 @@ class HarborSignIn:
 
     def user(self, headers) -> dict | None:
         token = headers.get(TOKEN_HEADER, "") if headers else ""
+        origin = headers.get("Origin", "") if headers else ""
+        self._request.machine = bool(token) or origin.startswith("chrome-extension://")
         if token:
             user = self.accounts.token_user(token)
             return user and {**user, "prefs": self.accounts.prefs(user["id"])}
@@ -551,8 +561,8 @@ class AccountAPI:
 
     def state(self) -> dict:
         me = self._me()
-        if not me:
-            return {}
+        if not me:  # a guest: the page shows "Sign in" and the library
+            return {"account": None}
         return {
             "account": {
                 "name": me["name"],
