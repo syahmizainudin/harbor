@@ -54,6 +54,11 @@ class QueueStore:
     def _owner(self, kind: str, job_id: int) -> int | None:
         return self.owners.get(kind, job_id) if self.owners is not None else None
 
+    def _set_owner(self, kind: str, jobs, user_id: int | None) -> None:
+        if self.owners is not None:
+            for j in jobs:
+                self.owners.set(kind, j.id, user_id)
+
     @property
     def enabled(self) -> bool:
         return self._enabled
@@ -189,9 +194,7 @@ class QueueStore:
                     method=int(c.get("method", 4)),
                 )
                 restored += len(added)
-                for j in added:
-                    if self.owners is not None:
-                        self.owners.set("convert", j.id, c.get("owner"))
+                self._set_owner("convert", added, c.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:
                 notes.append(f"not restored: conversion of {c.get('path', '?')}: {e}")
         for d in data.get("downloads", []):
@@ -207,9 +210,7 @@ class QueueStore:
                 auth = Auth(mode, api_key if mode != "none" else "", d.get("auth_name", ""))
                 added, _ = dq.add([d["url"]], d["dest_dir"], auth, after=d.get("after") or {})
                 restored += len(added)
-                for j in added:
-                    if self.owners is not None:
-                        self.owners.set("download", j.id, d.get("owner"))
+                self._set_owner("download", added, d.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:
                 notes.append(f"not restored: {d.get('url', '?')}: {e}")
         return restored

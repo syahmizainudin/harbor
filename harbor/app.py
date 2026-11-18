@@ -134,21 +134,8 @@ def default_library_cache() -> Path:
     return xdg_path("XDG_CACHE_HOME", "harbor", "thumbs")
 
 
-def make_library_hook(library: Library):
-    """When a conversion finishes inside a library folder, add the new .cbz to the library now."""
-
-    def on_convert_change(job) -> None:
-        if job.state == DONE and job.output:
-            try:
-                library.scan_file(job.output)  # no-op outside the library's folders
-            except Exception as e:  # noqa: BLE001 - the next full scan picks it up anyway
-                print(f"harbor: couldn't add {job.output} to the library: {e}", flush=True)
-
-    return on_convert_change
-
-
 def make_library_file_hook(library: Library):
-    """When a download is kept as it is (an .epub, say) inside a library folder, add it now."""
+    """When a file lands inside a library folder (a download kept as it is, an .epub say), add it now."""
 
     def add(path: Path) -> None:
         try:
@@ -157,6 +144,17 @@ def make_library_file_hook(library: Library):
             print(f"harbor: couldn't add {path} to the library: {e}", flush=True)
 
     return add
+
+
+def make_library_hook(library: Library):
+    """When a conversion finishes inside a library folder, add the new .cbz to the library now."""
+    add = make_library_file_hook(library)
+
+    def on_convert_change(job) -> None:
+        if job.state == DONE and job.output:
+            add(job.output)
+
+    return on_convert_change
 
 
 class EnvKeyDownloadAPI(DownloadAPI):
@@ -189,10 +187,10 @@ class HarborAPI:
     def state(self) -> dict:
         from cbzwebp.web import current_user
 
-        if self.guests and current_user() is None:  # no folders, key names or notes for guests
+        user = current_user()
+        if self.guests and user is None:  # no folders, key names or notes for guests
             return {"harbor": {"version": __version__}}
         defaults = {**self.settings.page_defaults(), "convert_downloads": True}
-        user = current_user()
         if user:  # the signed-in user's own defaults win over the .env ones
             prefs = user.get("prefs", {})
             defaults.update({k: prefs[k] for k in USER_PAGE_PREFS if k in prefs})
