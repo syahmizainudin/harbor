@@ -220,8 +220,10 @@ class Accounts:
 
     @staticmethod
     def _public(r: sqlite3.Row) -> dict:
+        """What may be shown about a user: never the password hash. A row from a sign-in lookup
+        (with ``prefs_json``) adds the user's own defaults as ``prefs``."""
         perms = sorted(ALL_PERMS) if r["locked"] else json.loads(r["perms_json"] or "[]")
-        return {
+        user = {
             "id": r["id"],
             "name": r["name"],
             "admin": r["role_id"] == ADMIN_ROLE,
@@ -230,6 +232,9 @@ class Accounts:
             "role": r["role"],
             "perms": perms,
         }
+        if "prefs_json" in r.keys():
+            user["prefs"] = json.loads(r["prefs_json"] or "{}")
+        return user
 
     def count(self) -> int:
         return self._q("SELECT count(*) FROM users")[0][0]
@@ -450,8 +455,9 @@ class Accounts:
             return None
         now = time.time()
         rows = self._q(
-            """SELECT u.*, r.name AS role, r.perms_json, r.locked, s.last_seen
+            """SELECT u.*, r.name AS role, r.perms_json, r.locked, p.prefs_json, s.last_seen
                FROM sessions s JOIN users u ON u.id = s.user_id LEFT JOIN roles r ON r.id = u.role_id
+               LEFT JOIN prefs p ON p.user_id = u.id
                WHERE s.id_hash = ? AND s.expires_at > ? AND u.disabled = 0""",
             (_sha(sid), now),
         )
@@ -488,8 +494,9 @@ class Accounts:
         if not token or not token.startswith(TOKEN_PREFIX):
             return None
         rows = self._q(
-            """SELECT u.*, r.name AS role, r.perms_json, r.locked, t.id AS tid, t.last_used
+            """SELECT u.*, r.name AS role, r.perms_json, r.locked, p.prefs_json, t.id AS tid, t.last_used
                FROM tokens t JOIN users u ON u.id = t.user_id LEFT JOIN roles r ON r.id = u.role_id
+               LEFT JOIN prefs p ON p.user_id = u.id
                WHERE t.hash = ? AND u.disabled = 0""",
             (_sha(token),),
         )
@@ -540,12 +547,11 @@ class HarborSignIn:
         origin = headers.get("Origin", "") if headers else ""
         self._request.machine = bool(token) or origin.startswith("chrome-extension://")
         if token:
-            user = self.accounts.token_user(token)
-            return user and {**user, "prefs": self.accounts.prefs(user["id"])}
+            return self.accounts.token_user(token)  # with "prefs", from the same query
         sid = session_id(headers)
         user = self.accounts.session_user(sid)
         # The session id rides along for sign-out and password changes; AccountAPI never shows it.
-        return user and {**user, "prefs": self.accounts.prefs(user["id"]), "_sid": sid}
+        return user and {**user, "_sid": sid}
 
 
 class AccountAPI:

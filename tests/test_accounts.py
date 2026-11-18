@@ -125,6 +125,13 @@ class AccountsTests(unittest.TestCase):
         info, token = self.acc.create_token(ann["id"], "laptop")
         self.assertTrue(token.startswith("hbt_"))
         self.assertEqual(self.acc.token_user(token)["name"], "Ann")
+        self.assertEqual(self.acc.token_user(token)["prefs"], {})
+        self.acc.set_prefs(ann["id"], {"quality": 70})
+        _, sid = self.acc.login("Ann", PW)
+        for user in (self.acc.token_user(token), self.acc.session_user(sid)):  # prefs in the same query
+            self.assertEqual(user["prefs"], {"quality": 70})
+            self.assertFalse({"pass_hash", "_sid", "prefs_json"} & set(user))
+        self.assertNotIn("prefs", self.acc.users()[0])
         self.assertEqual([t["label"] for t in self.acc.tokens(ann["id"])], ["laptop"])
         self.assertIsNone(self.acc.token_user("hbt_wrong"))
         self.assertIsNone(self.acc.token_user(token[4:]))
