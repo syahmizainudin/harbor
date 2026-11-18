@@ -100,7 +100,7 @@ Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and pa
 
 ### Unfinished jobs survive a restart
 
-Harbor saves the queued and running jobs of both tabs every time one changes, and adds them back the next time it starts. The page shows a note when it does.
+Harbor saves the queued and running jobs of both tabs within a second of a change, and adds them back the next time it starts. The page shows a note when it does.
 - A running job starts over.
 - Finished and cancelled jobs aren't kept.
 - **The API key is never saved.** A download that needs a key comes back only if harbor has `HARBOR_API_KEY`. Otherwise, the note asks you to add it again.

@@ -1,8 +1,9 @@
 """Keep unfinished jobs across restarts.
 
-Every time a job changes, the queued and running jobs of both queues are written to a small
-JSON file (``HARBOR_STATE_FILE``, default ``$XDG_STATE_HOME/harbor/queue.json``). At start-up
-they are added again through the queues' public ``add`` methods.
+When a job changes, the queued and running jobs of both queues are written to a small JSON file
+(``HARBOR_STATE_FILE``, default ``$XDG_STATE_HOME/harbor/queue.json``). Changes are batched: the
+first one schedules a save ``SAVE_DELAY`` seconds later, which writes everything changed by then.
+At start-up the jobs are added again through the queues' public ``add`` methods.
 
   * The API key is never written. A restored download that needs a key uses the ``.env`` key;
     without one it is skipped with a note.
@@ -30,11 +31,18 @@ def default_state_file() -> Path:
     return Path(base) / "harbor" / "queue.json"
 
 
+SAVE_DELAY = 0.5  # seconds from the first unsaved change to the save that writes it
+
+
 class QueueStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, delay: float = SAVE_DELAY):
         self.path = Path(path)
-        self.enabled = True
-        self._lock = threading.Lock()
+        self.delay = delay
+        self._enabled = True
+        self._lock = threading.Lock()  # one snapshot-and-write at a time, and ``enabled`` changes
+        self._sched = threading.Lock()  # ``_dirty`` and ``_timer``; never held while saving
+        self._dirty = False
+        self._timer: threading.Timer | None = None
         self._queues: tuple[JobQueue, DownloadQueue] | None = None
         self.owners = None  # perms.JobOwners: who queued each job, kept across restarts
 
@@ -45,11 +53,50 @@ class QueueStore:
     def _owner(self, kind: str, job_id: int) -> int | None:
         return self.owners.get(kind, job_id) if self.owners is not None else None
 
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        """Off: changes are no longer saved, and a scheduled save won't write. Once this returns,
+        no save from a change is writing either (shutdown relies on that: it marks running jobs
+        cancelled, and a save after that would drop them)."""
+        with self._lock:
+            self._enabled = bool(value)
+        if not value:
+            with self._sched:
+                if self._timer is not None:
+                    self._timer.cancel()
+                    self._timer = None
+
     # ------------------------------------------------------------ saving
     def on_change(self, _job=None) -> None:
-        """Queue ``on_change`` hook: save after every job change."""
-        if self.enabled and self._queues:
-            self.save()
+        """Queue ``on_change`` hook: mark the state changed and schedule one save for the batch."""
+        if not (self._enabled and self._queues):
+            return
+        with self._sched:
+            self._dirty = True
+            if self._timer is None:
+                self._timer = threading.Timer(self.delay, self._scheduled_save)
+                self._timer.daemon = True
+                self._timer.start()
+
+    def _scheduled_save(self) -> None:
+        with self._sched:
+            self._timer = None
+        self.flush()
+
+    def flush(self) -> None:
+        """Save now if a change hasn't been saved yet (and saving is on)."""
+        with self._lock:
+            if self._dirty and self._enabled:
+                self._write()
+
+    def save(self) -> None:
+        """Save now, whatever has changed (shutdown and restore)."""
+        with self._lock:
+            self._write()
 
     def snapshot(self) -> dict:
         cq, dq = self._queues
@@ -82,15 +129,18 @@ class QueueStore:
             ],
         }
 
-    def save(self) -> None:
-        data = json.dumps(self.snapshot(), indent=1)
-        with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_name(self.path.name + ".tmp")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(data)
-            os.replace(tmp, self.path)
+    def _write(self) -> None:
+        """Snapshot and write, under ``_lock`` so snapshots reach the file in the order taken. A
+        change from here on marks the state changed again and schedules another save."""
+        with self._sched:
+            self._dirty = False
+        data = json.dumps(self.snapshot())
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        os.replace(tmp, self.path)
 
     # ------------------------------------------------------------ restoring
     def load(self) -> dict | None:

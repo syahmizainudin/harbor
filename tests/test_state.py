@@ -12,6 +12,7 @@ from helpers import FileServer, comic_entries, make_zip
 
 from dlqueue.download import Auth
 from harbor.app import build
+from harbor.perms import JobOwners
 from harbor.state import QueueStore
 
 KEY = FileServer.KEY
@@ -24,17 +25,21 @@ class StoreTests(unittest.TestCase):
         self.state_file = self.dir / "state" / "queue.json"
         self.files_server = FileServer()
         self.queues = []
+        self.stores = []
 
     def tearDown(self):
+        for store in self.stores:
+            store.enabled = False  # no scheduled save after the folder is gone
         for q in self.queues:
             q.shutdown()
         self.files_server.close()
         self.tmp.cleanup()
 
-    def start(self, paused=True):
-        store = QueueStore(self.state_file)
+    def start(self, paused=True, owners=None, delay=None):
+        store = QueueStore(self.state_file) if delay is None else QueueStore(self.state_file, delay)
         cq, dq = build(jobs=1, image_threads=1, downloads=1, timeout=10, retries=0, on_change=store.on_change)
-        store.attach(cq, dq)
+        store.attach(cq, dq, owners)
+        self.stores.append(store)
         self.queues += [dq, cq]
         cq.set_paused(paused)
         dq.set_paused(paused)
@@ -51,13 +56,20 @@ class StoreTests(unittest.TestCase):
         return json.loads(self.state_file.read_text())
 
     def test_saves_unfinished_jobs_without_the_key(self):
-        _store, cq, dq = self.start()
+        owners = JobOwners()
+        store, cq, dq = self.start(owners=owners)
         make_zip(self.dir / "A.zip", comic_entries())
-        cq.add([self.dir / "A.zip"], 70, delete_original=False, method=2)
-        dq.add(
-            [self.files_server.base + "/secure/x.zip"], self.dir, Auth("bearer", KEY), after={"quality": 60}
-        )
+        with owners.adding("convert", cq, 7):  # what an add through the API does
+            cq.add([self.dir / "A.zip"], 70, delete_original=False, method=2)
+        with owners.adding("download", dq, 8):
+            dq.add(
+                [self.files_server.base + "/secure/x.zip"],
+                self.dir,
+                Auth("bearer", KEY),
+                after={"quality": 60},
+            )
         dq.add([self.files_server.base + "/secure/y.zip"], self.dir, Auth("query", KEY, "api_key"))
+        store.flush()
         data = self.saved()
         self.assertEqual(
             data["convert"],
@@ -68,22 +80,46 @@ class StoreTests(unittest.TestCase):
                     "delete_original": False,
                     "overwrite": False,
                     "method": 2,
-                    "owner": None,
+                    "owner": 7,
                 }
             ],
         )
         self.assertEqual([d["auth_mode"] for d in data["downloads"]], ["bearer", "query"])
+        self.assertEqual([d["owner"] for d in data["downloads"]], [8, None])
         self.assertEqual(data["downloads"][0]["after"]["quality"], 60)
         self.assertNotIn(KEY, self.state_file.read_text())
         self.assertEqual(stat.S_IMODE(os.stat(self.state_file).st_mode), 0o600)
 
+    def test_changes_are_saved_in_batches_with_their_owner(self):
+        owners = JobOwners()
+        _store, cq, _dq = self.start(owners=owners, delay=2)  # long enough to see nothing saved yet
+        for name in ("A", "B"):
+            make_zip(self.dir / f"{name}.zip", comic_entries())
+        with owners.adding("convert", cq, 7):  # the add's change is seen before its owner is set
+            cq.add([self.dir / "A.zip", self.dir / "B.zip"], 70)
+        self.assertFalse(self.state_file.exists())  # not saved per change
+        deadline = time.monotonic() + 10
+        while not self.state_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual([c["owner"] for c in self.saved()["convert"]], [7, 7])
+
+    def test_no_save_once_disabled(self):
+        store, cq, _dq = self.start()
+        make_zip(self.dir / "A.zip", comic_entries())
+        cq.add([self.dir / "A.zip"], 70)  # schedules a save
+        store.enabled = False  # what shutdown does before stopping the queues
+        store.flush()
+        time.sleep(store.delay + 0.3)
+        self.assertFalse(self.state_file.exists())
+
     def test_finished_and_cancelled_jobs_are_dropped(self):
-        _store, _cq, dq = self.start(paused=False)
+        store, _cq, dq = self.start(paused=False)
         (_job,), _ = dq.add([self.files_server.base + "/files/x/a.bin"], self.dir)
         dq.wait_idle()
         dq.set_paused(True)
         (job2,), _ = dq.add([self.files_server.base + "/files/x/b.bin"], self.dir)
         dq.cancel(job2.id)
+        store.flush()
         self.assertEqual(self.saved()["downloads"], [])
 
     def test_restore_after_restart(self):

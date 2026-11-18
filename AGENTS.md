@@ -19,7 +19,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 |---|---|
 | `harbor/app.py` | `check_after` (validates a download's convert options), `make_on_saved` (the hand-off), `build` (starts both queues) and `serve_harbor` (mounts `ConvertAPI` at `/api/`, `EnvKeyDownloadAPI` at `/api/download/` and `HarborAPI`, page defaults only, at `/api/harbor/`) |
 | `harbor/config.py` | Settings: `.env` parsing, file lookup, precedence (flag > environment > file > default), validation |
-| `harbor/state.py` | `QueueStore`: saves unfinished jobs on every change, restores them at start-up through the queues' `add` |
+| `harbor/state.py` | `QueueStore`: saves unfinished jobs shortly after they change (changes batched, at most one save per `SAVE_DELAY`), restores them at start-up through the queues' `add` |
 | `harbor/accounts.py` | `Accounts` (users, sessions, extension tokens), `HarborSignIn` (the server's `auth`), `AccountAPI` at `/api/account/` |
 | `harbor/login.html` | The sign-in page, served at `/login` |
 | `harbor/perms.py` | `GuardedQueueAPI` (permissions on the queue APIs), `JobOwners` (who queued each job), `can` |
@@ -90,6 +90,8 @@ Downloads and conversions write and delete the user's files, and the API key is 
 
 - Never write the API key. Only `auth_mode` and `auth_name` are saved; restore uses the `.env` key or skips the download with a note.
 - The shutdown order in `cli.cmd_ui` matters: save, disable the store, then stop the download queue, then the convert queue. `shutdown()` marks running jobs cancelled, and saving after that would drop them.
+- Saves are batched: `on_change` only marks the store changed and schedules one save `SAVE_DELAY` later. That save re-checks `enabled` under the store's lock, and setting `enabled = False` cancels it, so nothing writes after shutdown disables the store. The snapshot is taken under the same lock as the write. `save()` (shutdown, restore) writes at once; `flush()` writes now if something changed, for tests that read the file right after a change.
+- A job is saved with its owner. The batch delay lets an API add record its owners (`JobOwners.adding`) before the save runs.
 - Only queued and running jobs are saved. Restoring removes a download's recorded `.part` first; resuming across restarts is not supported.
 - Save with a temp file and `os.replace`, mode 0600. A file that won't parse is moved to `.bad`, never deleted.
 
