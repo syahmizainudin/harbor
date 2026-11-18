@@ -193,10 +193,11 @@ def cmd_ui(args) -> int:
     )
     store.attach(cq, dq, owners)
 
-    def stop_queues() -> None:
-        # Save what's unfinished first: shutting down marks running jobs cancelled.
-        store.save()
-        store.enabled = False
+    def close_all(save: bool) -> None:
+        """Stop everything, in this order. ``save=False`` keeps the saved jobs from the last run."""
+        if save:
+            store.save()  # first: shutting down marks running jobs cancelled
+        store.enabled = False  # no save from here on
         dq.shutdown()  # before the converter, so no download hands it a new job
         cq.shutdown()
         library.close()  # last: a finishing conversion may still add a book
@@ -207,9 +208,7 @@ def cmd_ui(args) -> int:
             accounts = Accounts(_accounts_path(settings), settings.session_days, settings.secure_cookie)
         except (OSError, sqlite3.Error) as e:
             print(f"harbor: cannot open the accounts database: {e}", file=sys.stderr)
-            dq.shutdown()
-            cq.shutdown()
-            library.close()
+            close_all(save=False)
             return 2
         admin = accounts.first_admin()
         if admin is None:
@@ -223,10 +222,7 @@ def cmd_ui(args) -> int:
         server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts, owners)
     except OSError as e:
         print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
-        store.enabled = False  # keep the saved jobs for the next start
-        dq.shutdown()
-        cq.shutdown()
-        library.close()
+        close_all(save=False)  # keep the saved jobs for the next start
         return 2
     if settings.library_scan and library.roots():
         library.scan()  # picks up what changed while harbor was stopped; runs in the background
@@ -254,7 +250,7 @@ def cmd_ui(args) -> int:
         print("\nStopping…", flush=True)
     finally:
         server.server_close()
-        stop_queues()
+        close_all(save=True)
         if accounts:
             accounts.close()
     return 0
