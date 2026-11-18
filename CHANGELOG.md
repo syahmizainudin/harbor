@@ -4,6 +4,10 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+## 0.1.1
+
+Pins cbz-webp 0.4.2, dl-queue 0.4.2 and cbz-shelf 0.4.3.
+
 - **Library permissions can't be switched off by old dependencies:** `harbor ui` no longer falls back to a library without permission checks (or to no sign-in) when cbz-shelf or cbz-webp are older than the pins. It stops at start-up and says to reinstall the dependencies.
 - The last admin who can sign in is protected by one check, made under the accounts lock. Disabling an admin who is already disabled is no longer refused.
 - Adding a job no longer holds up the workers, the saved state and the download hand-off while it scans folders.
