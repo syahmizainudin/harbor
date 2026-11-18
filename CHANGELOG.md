@@ -4,6 +4,13 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- **Library permissions can't be switched off by old dependencies:** `harbor ui` no longer falls back to a library without permission checks (or to no sign-in) when cbz-shelf or cbz-webp are older than the pins. It stops at start-up and says to reinstall the dependencies.
+- The last admin who can sign in is protected by one check, made under the accounts lock. Disabling an admin who is already disabled is no longer refused.
+- Adding a job no longer holds up the workers, the saved state and the download hand-off while it scans folders.
+- Unfinished jobs are saved in batches, within about half a second of a change, instead of on every change. A job added from the page is saved with its owner (it was saved without one until the next change).
+- The page polls once a second on the Convert and Download tabs, every 5 seconds on Library and Admin or when the browser tab is hidden, and refreshes at once when you come back. Stats and tables are redrawn only when they change.
+- Signing in and checking a session or token take fewer database queries, and adding a user or setting a password no longer blocks sign-ins while the password is hashed.
+
 - **The library is open without signing in:** a signed-out visitor gets the Library tab and can browse and read. Converting, downloading, favourites, editing and the other tabs still need an account (a star sends you to sign in). Signed out, reading progress and reader settings aren't saved, and `/api/state` shows no jobs and no settings. A request with an extension token that doesn't work still gets 401.
 - **Your own defaults:** Convert and Download settings (quality, effort, delete original, download folder, auth mode and name, convert downloads) are saved per account as you change them, and `/api/state` gives each user theirs, so the Chrome extension uses them too. **Account → Go back to harbor's defaults** clears them. The API key stays server-wide.
 - Text reader settings are saved per account (cbz-shelf 0.4.1).
