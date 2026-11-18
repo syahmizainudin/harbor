@@ -252,11 +252,12 @@ class Accounts:
     def add(self, name: str, password: str, admin: bool = False, role: int | str | None = None) -> dict:
         name, password = check_name(name), check_new_password(password)
         role_id = ADMIN_ROLE if admin else self.role(role)["id"] if role is not None else MEMBER_ROLE
+        pass_hash = hash_password(password)  # slow on purpose: not under the lock
         try:
             with self._lock:
                 self._db.execute(
                     "INSERT INTO users(name, pass_hash, is_admin, role_id, created_at) VALUES (?,?,?,?,?)",
-                    (name, hash_password(password), int(role_id == ADMIN_ROLE), role_id, time.time()),
+                    (name, pass_hash, int(role_id == ADMIN_ROLE), role_id, time.time()),
                 )
         except sqlite3.IntegrityError:
             raise ValueError(f"there is already a user called {name!r}") from None
@@ -364,11 +365,9 @@ class Accounts:
     def set_password(self, name: str, password: str, keep_session: str | None = None) -> None:
         """Change a password and end the user's other sessions (all of them unless ``keep_session``)."""
         user = self.get(name)
+        pass_hash = hash_password(check_new_password(password))  # slow on purpose: not under the lock
         with self._lock:
-            self._db.execute(
-                "UPDATE users SET pass_hash = ? WHERE id = ?",
-                (hash_password(check_new_password(password)), user["id"]),
-            )
+            self._db.execute("UPDATE users SET pass_hash = ? WHERE id = ?", (pass_hash, user["id"]))
             keep = _sha(keep_session) if keep_session else ""
             self._db.execute("DELETE FROM sessions WHERE user_id = ? AND id_hash != ?", (user["id"], keep))
 
