@@ -26,6 +26,8 @@ import time
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 
+from .config import xdg_path
+
 COOKIE = "harbor_session"
 TOKEN_HEADER = "X-Harbor-Token"
 TOKEN_PREFIX = "hbt_"
@@ -117,10 +119,7 @@ def clean_perms(perms) -> list[str]:
 
 
 def default_accounts_db() -> Path:
-    import os
-
-    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "harbor" / "harbor.db"
+    return xdg_path("XDG_DATA_HOME", "harbor", "harbor.db")
 
 
 def _sha(value: str) -> str:

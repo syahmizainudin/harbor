@@ -23,12 +23,13 @@ from cbzwebp.jobqueue import ACTIVE, JobQueue
 from dlqueue.download import Auth, DownloadQueue
 from dlqueue.paths import PART_SUFFIX
 
+from .config import xdg_path
+
 FORMAT = 1
 
 
 def default_state_file() -> Path:
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "harbor" / "queue.json"
+    return xdg_path("XDG_STATE_HOME", "harbor", "queue.json")
 
 
 SAVE_DELAY = 0.5  # seconds from the first unsaved change to the save that writes it

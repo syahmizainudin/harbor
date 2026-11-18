@@ -50,6 +50,14 @@ def parse_env(text: str, source: str = ".env") -> dict[str, str]:
     return values
 
 
+XDG_DEFAULTS = {"XDG_DATA_HOME": ".local/share", "XDG_STATE_HOME": ".local/state", "XDG_CACHE_HOME": ".cache"}
+
+
+def xdg_path(var: str, *parts: str) -> Path:
+    """``$var/parts`` (``var`` is one of ``XDG_DEFAULTS``), or under its default in the home folder."""
+    return Path(os.environ.get(var) or Path.home() / XDG_DEFAULTS[var], *parts)
+
+
 def find_env_file(explicit: str | None, environ: dict[str, str] | None = None) -> Path | None:
     environ = os.environ if environ is None else environ
     for given in (explicit, environ.get("HARBOR_ENV_FILE")):

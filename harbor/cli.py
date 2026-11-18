@@ -97,14 +97,15 @@ def _read_password(from_stdin: bool) -> str:
     return first
 
 
-def _accounts_path(settings) -> Path:
-    return Path(settings.accounts_db).expanduser() if settings.accounts_db else default_accounts_db()
+def _path(setting: str, default: Path) -> Path:
+    """A path setting, or ``default`` when it is empty."""
+    return Path(setting).expanduser() if setting else default
 
 
 def cmd_user(args) -> int:
     try:
         settings = load_settings({}, args.env_file)
-        accounts = Accounts(_accounts_path(settings))
+        accounts = Accounts(_path(settings.accounts_db, default_accounts_db()))
     except (ConfigError, OSError, sqlite3.Error) as e:
         print(f"harbor: {e}", file=sys.stderr)
         return 2
@@ -170,16 +171,11 @@ def cmd_ui(args) -> int:
 
     notes: list[str] = []  # restore notes, shown on the page
     try:
-        library = Library(
-            Path(settings.library_db).expanduser() if settings.library_db else default_library_db(),
-            default_library_cache(),
-        )
+        library = Library(_path(settings.library_db, default_library_db()), default_library_cache())
     except (OSError, sqlite3.Error) as e:
         print(f"harbor: cannot open the library database: {e}", file=sys.stderr)
         return 2
-    store = QueueStore(
-        Path(settings.state_file).expanduser() if settings.state_file else default_state_file()
-    )
+    store = QueueStore(_path(settings.state_file, default_state_file()))
     owners = JobOwners()  # who queued each job, shared by the hand-off, the saved state and the API
     cq, dq = build(
         owners=owners,
@@ -205,7 +201,11 @@ def cmd_ui(args) -> int:
     accounts = None
     if settings.accounts:
         try:
-            accounts = Accounts(_accounts_path(settings), settings.session_days, settings.secure_cookie)
+            accounts = Accounts(
+                _path(settings.accounts_db, default_accounts_db()),
+                settings.session_days,
+                settings.secure_cookie,
+            )
         except (OSError, sqlite3.Error) as e:
             print(f"harbor: cannot open the accounts database: {e}", file=sys.stderr)
             close_all(save=False)

@@ -13,8 +13,6 @@ from collections.abc import Callable
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-import os
-
 from cbzshelf.library import Library
 from cbzshelf.web import UI_HTML as LIBRARY_HTML
 from cbzshelf.web import LibraryAPI
@@ -25,7 +23,7 @@ from dlqueue.download import Download, DownloadQueue
 from dlqueue.web import DownloadAPI
 
 from . import __version__
-from .config import Settings
+from .config import Settings, xdg_path
 
 UI_HTML = (Path(__file__).parent / "ui.html").read_bytes()
 LOGIN_HTML = (Path(__file__).parent / "login.html").read_bytes()
@@ -129,13 +127,11 @@ def build(
 
 
 def default_library_db() -> Path:
-    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "harbor" / "library.db"
+    return xdg_path("XDG_DATA_HOME", "harbor", "library.db")
 
 
 def default_library_cache() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "harbor" / "thumbs"
+    return xdg_path("XDG_CACHE_HOME", "harbor", "thumbs")
 
 
 def make_library_hook(library: Library):

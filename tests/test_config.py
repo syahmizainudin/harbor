@@ -17,7 +17,7 @@ from helpers import FileServer
 
 from harbor import cli
 from harbor.app import build, serve_harbor
-from harbor.config import ConfigError, Settings, find_env_file, load_settings, parse_env
+from harbor.config import ConfigError, Settings, find_env_file, load_settings, parse_env, xdg_path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,6 +53,18 @@ HARBOR_JOBS=
             parse_env("A=1\nnot a setting\n", "x.env")
         with self.assertRaisesRegex(ConfigError, "unclosed quote"):
             parse_env('A="open')
+
+
+class XdgPathTests(unittest.TestCase):
+    def test_xdg_variable_or_home_default(self):
+        home = Path("/nonexistent-home")
+        with mock.patch.object(Path, "home", return_value=home), mock.patch.dict(os.environ, clear=True):
+            self.assertEqual(
+                xdg_path("XDG_STATE_HOME", "harbor", "queue.json"), home / ".local/state/harbor/queue.json"
+            )
+            self.assertEqual(xdg_path("XDG_CACHE_HOME", "harbor"), home / ".cache/harbor")
+            os.environ["XDG_DATA_HOME"] = "/data"
+            self.assertEqual(xdg_path("XDG_DATA_HOME", "harbor", "harbor.db"), Path("/data/harbor/harbor.db"))
 
 
 class LoadSettingsTests(unittest.TestCase):
