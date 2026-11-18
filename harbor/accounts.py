@@ -263,15 +263,11 @@ class Accounts:
         return self.get(name)
 
     def set_role(self, name: str, role: int | str) -> dict:
-        user, target = self.get(name), self.role(role)
-        if (
-            user["admin"]
-            and target["id"] != ADMIN_ROLE
-            and not user["disabled"]
-            and self._active_admins() <= 1
-        ):
-            raise ValueError("this is the only admin who can sign in; make another admin first")
+        target = self.role(role)
         with self._lock:
+            user = self.get(name)
+            if target["id"] != ADMIN_ROLE and self._would_leave_no_admin(user):
+                raise ValueError("this is the only admin who can sign in; make another admin first")
             self._db.execute(
                 "UPDATE users SET role_id = ?, is_admin = ? WHERE id = ?",
                 (target["id"], int(target["id"] == ADMIN_ROLE), user["id"]),
@@ -377,23 +373,29 @@ class Accounts:
             self._db.execute("DELETE FROM sessions WHERE user_id = ? AND id_hash != ?", (user["id"], keep))
 
     def set_disabled(self, name: str, disabled: bool) -> None:
-        user = self.get(name)
-        if disabled and user["admin"] and self._active_admins() <= 1:
-            raise ValueError("this is the only admin who can sign in; add or enable another admin first")
         with self._lock:
+            user = self.get(name)
+            if disabled and self._would_leave_no_admin(user):
+                raise ValueError("this is the only admin who can sign in; add or enable another admin first")
             self._db.execute("UPDATE users SET disabled = ? WHERE id = ?", (int(disabled), user["id"]))
             if disabled:
                 self._db.execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
                 self._db.execute("DELETE FROM tokens WHERE user_id = ?", (user["id"],))
 
     def remove(self, name: str) -> None:
-        user = self.get(name)
-        if user["admin"] and self._active_admins() <= 1 and not user["disabled"]:
-            raise ValueError("this is the only admin who can sign in; add or enable another admin first")
-        self._x("DELETE FROM users WHERE id = ?", (user["id"],))
+        with self._lock:
+            user = self.get(name)
+            if self._would_leave_no_admin(user):
+                raise ValueError("this is the only admin who can sign in; add or enable another admin first")
+            self._x("DELETE FROM users WHERE id = ?", (user["id"],))
 
     def _active_admins(self) -> int:
         return self._q("SELECT count(*) FROM users WHERE role_id = ? AND disabled = 0", (ADMIN_ROLE,))[0][0]
+
+    def _would_leave_no_admin(self, user: dict) -> bool:
+        """Whether taking admin away from ``user`` (a role change, disabling, removal) would leave no
+        admin who can sign in. Call it under ``_lock``, with ``user`` read under the same lock."""
+        return user["admin"] and not user["disabled"] and self._active_admins() <= 1
 
     def first_admin(self) -> dict | None:
         rows = self._q(f"{self.USER_SQL} WHERE u.role_id = ? ORDER BY u.id LIMIT 1", (ADMIN_ROLE,))

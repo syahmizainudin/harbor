@@ -93,6 +93,24 @@ class AccountsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.acc.remove("Ann")
 
+    def test_last_admin_who_can_sign_in_is_kept(self):
+        self.acc.add("Ann", PW, admin=True)
+        self.acc.add("Cy", PW, admin=True)
+        self.acc.set_disabled("Ann", True)  # Cy is still an admin who can sign in
+        self.acc.set_disabled("Ann", True)  # already disabled: nothing is taken away, so not refused
+        for refused in (
+            lambda: self.acc.set_disabled("Cy", True),
+            lambda: self.acc.set_role("Cy", "Member"),
+            lambda: self.acc.remove("Cy"),
+        ):
+            with self.assertRaises(ValueError):
+                refused()
+        self.assertEqual(self.acc.set_role("Cy", "Admin")["role"], "Admin")  # stays admin: fine
+        self.assertEqual(self.acc.set_role("Ann", "Member")["role"], "Member")  # disabled: fine
+        self.acc.set_role("Ann", "Admin")
+        self.acc.remove("Ann")  # disabled admin
+        self.assertEqual([u["name"] for u in self.acc.users()], ["Cy"])
+
     def test_password_change_ends_other_sessions(self):
         self.acc.add("Ann", PW)
         _, keep = self.acc.login("Ann", PW)
