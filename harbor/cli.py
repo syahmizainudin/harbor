@@ -18,6 +18,7 @@ from .app import (
     default_library_db,
     make_library_file_hook,
     make_library_hook,
+    missing_dependencies,
     serve_harbor,
 )
 from cbzshelf.library import Library
@@ -149,6 +150,14 @@ def cmd_user(args) -> int:
 
 
 def cmd_ui(args) -> int:
+    missing = missing_dependencies()
+    if missing:
+        print(
+            f"harbor: the installed dependencies are too old (missing {', '.join(missing)}). "
+            "Reinstall them (pip install --target .deps .) and start again.",
+            file=sys.stderr,
+        )
+        return 2
     flags = {k: getattr(args, k) for k in ("port", "quality", "jobs", "threads", "downloads")}
     try:
         for k in ("jobs", "threads", "downloads"):
@@ -193,17 +202,7 @@ def cmd_ui(args) -> int:
         library.close()  # last: a finishing conversion may still add a book
 
     accounts = None
-    import cbzwebp.web
-
-    if settings.accounts and not hasattr(cbzwebp.web, "current_user"):
-        # Dependencies older than the pins (cbz-webp < 0.4.0): no sign-in support. Say so loudly
-        # rather than crash-looping under pm2; reinstalling the dependencies fixes it.
-        print(
-            "harbor: WARNING: the installed cbz-webp can't require sign-in, so accounts are OFF. "
-            "Reinstall the dependencies (pip install --target .deps .) and restart.",
-            flush=True,
-        )
-    elif settings.accounts:
+    if settings.accounts:
         try:
             accounts = Accounts(_accounts_path(settings), settings.session_days, settings.secure_cookie)
         except (OSError, sqlite3.Error) as e:
@@ -215,7 +214,7 @@ def cmd_ui(args) -> int:
         admin = accounts.first_admin()
         if admin is None:
             print("harbor: no admin account yet. Run: harbor user add NAME --admin", flush=True)
-        elif hasattr(library, "give_user_data") and (moved := library.give_user_data(0, admin["id"])):
+        elif moved := library.give_user_data(0, admin["id"]):
             # Reading progress and favourites from before accounts belong to the first admin.
             print(
                 f"harbor: gave {moved} reading record(s) from before accounts to {admin['name']}", flush=True

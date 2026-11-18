@@ -31,6 +31,22 @@ UI_HTML = (Path(__file__).parent / "ui.html").read_bytes()
 LOGIN_HTML = (Path(__file__).parent / "login.html").read_bytes()
 
 
+def missing_dependencies() -> list[str]:
+    """What the installed cbz-webp and cbz-shelf lack of the API harbor needs (empty when all is
+    there). Harbor never runs with less: no sign-in or no library permissions would open it up."""
+    import inspect
+
+    missing = []
+    if "auth" not in inspect.signature(serve).parameters:
+        missing.append("cbz-webp serve(auth=...)")
+    if "can" not in inspect.signature(LibraryAPI).parameters:
+        missing.append("cbz-shelf LibraryAPI(can=...)")
+    for name in ("give_user_data", "scan_file"):
+        if not hasattr(Library, name):
+            missing.append(f"cbz-shelf Library.{name}")
+    return missing
+
+
 def check_after(after: dict) -> dict:
     """Validate and fill in the convert options a download carries (raises ValueError)."""
     convert = bool(after.get("convert", True))
@@ -234,14 +250,7 @@ def serve_harbor(
     }
     pages = {}
     if library is not None:
-        try:
-            library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can)
-        except TypeError:  # cbz-shelf < 0.4.0 (dependencies not reinstalled yet): no library permissions
-            print(
-                "harbor: WARNING: the installed cbz-shelf has no permissions; reinstall the dependencies",
-                flush=True,
-            )
-            library_api = LibraryAPI(library, user_of=_user_id)
+        library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can)
         apis["/api/library/"] = GuestSafeLibraryAPI(library_api) if guests else library_api
         pages["/library"] = LIBRARY_HTML
     auth = None
@@ -250,5 +259,4 @@ def serve_harbor(
         apis["/api/admin/"] = AdminAPI(accounts)
         pages["/login"] = LOGIN_HTML
         auth = HarborSignIn(accounts)
-    extra = {"auth": auth} if auth else {}  # only when needed: works with a cbz-webp that predates sign-in
-    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages, **extra)
+    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages, auth=auth)

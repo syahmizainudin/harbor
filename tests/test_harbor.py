@@ -10,6 +10,7 @@ import tempfile
 import threading
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 from urllib.parse import quote
 
@@ -24,7 +25,7 @@ from helpers import FileServer, comic_entries, make_zip
 from cbzwebp.jobqueue import DONE, FAILED, JobQueue
 from dlqueue.download import Auth
 from harbor import __version__, cli
-from harbor.app import build, check_after, make_on_saved, serve_harbor
+from harbor.app import build, check_after, make_on_saved, missing_dependencies, serve_harbor
 from harbor.config import Settings
 
 KEY = FileServer.KEY
@@ -238,6 +239,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.run_cli("ui", "-q", "0")[0], 2)
         self.assertEqual(self.run_cli("ui", "-d", "0")[0], 2)
         self.assertEqual(self.run_cli()[0], 2)
+
+    def test_too_old_dependencies_stop_startup(self):
+        self.assertEqual(missing_dependencies(), [])  # the pinned versions have everything
+        with mock.patch.object(cli, "missing_dependencies", return_value=["cbz-shelf LibraryAPI(can=...)"]):
+            code, _, err = self.run_cli("ui")
+        self.assertEqual(code, 2)
+        self.assertIn("Reinstall", err)
 
 
 class SharedCodeInStepTests(unittest.TestCase):
