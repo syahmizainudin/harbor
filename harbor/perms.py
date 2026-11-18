@@ -101,6 +101,11 @@ class JobOwners:
         with self._lock:
             return self._owners.get((kind, int(job_id)))
 
+    def snapshot(self, kind: str) -> dict[int, int]:
+        """Job id -> user id for one queue, copied under the lock."""
+        with self._lock:
+            return {job_id: user_id for (k, job_id), user_id in self._owners.items() if k == kind}
+
     def get_settled(self, kind: str, job_id: int) -> int | None:
         """``get``, but when the job has no owner yet, first wait for an add to that queue that is
         still going: it may have queued the job and not recorded its owner yet."""
@@ -150,9 +155,8 @@ class GuardedQueueAPI:
             prefs = user.get("prefs", {})
             st["defaults"] = {**st["defaults"], **{k: prefs[k] for k in ("quality", "method") if k in prefs}}
         if user is not None and SEE_ALL not in user.get("perms", ()):
-            st[self.list_key] = [
-                j for j in st[self.list_key] if self.owners.get(self.kind, j["id"]) == user["id"]
-            ]
+            owners = self.owners.snapshot(self.kind)
+            st[self.list_key] = [j for j in st[self.list_key] if owners.get(j["id"]) == user["id"]]
         return st
 
     def _add_refusal(self, body: dict, perms: set) -> str | None:
