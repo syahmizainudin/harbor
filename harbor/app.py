@@ -87,7 +87,7 @@ def make_on_saved(convert_queue: JobQueue, on_kept: Callable[[Path], None] | Non
             job.linked_id = added[0].id
             job.message = "saved; queued for conversion"
             if owners is not None:  # the conversion belongs to whoever queued the download
-                owners.set("convert", added[0].id, owners.get("download", job.id))
+                owners.set("convert", added[0].id, owners.get_settled("download", job.id))
 
     return on_saved
 

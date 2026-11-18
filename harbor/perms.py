@@ -86,15 +86,29 @@ def may_browse_folders(user) -> bool:
 
 
 class JobOwners:
-    """Job id -> user id, per queue ("convert" or "download"). In memory; ``QueueStore`` saves it."""
+    """Job id -> user id, per queue ("convert" or "download"). In memory; ``QueueStore`` saves it.
+
+    ``_lock`` guards only the dict and is held for short moments, so workers, the saved state and
+    the hand-off never wait on an add. ``_add_locks`` serialize the adds to each queue (see
+    ``adding``), which can take a while: a convert add scans folders."""
 
     def __init__(self):
         self._owners: dict[tuple[str, int], int] = {}
-        self._lock = threading.RLock()
+        self._lock = threading.Lock()
+        self._add_locks = {"convert": threading.Lock(), "download": threading.Lock()}
 
     def get(self, kind: str, job_id: int) -> int | None:
         with self._lock:
             return self._owners.get((kind, int(job_id)))
+
+    def get_settled(self, kind: str, job_id: int) -> int | None:
+        """``get``, but when the job has no owner yet, first wait for an add to that queue that is
+        still going: it may have queued the job and not recorded its owner yet."""
+        owner = self.get(kind, job_id)
+        if owner is None:
+            with self._add_locks[kind]:
+                owner = self.get(kind, job_id)
+        return owner
 
     def set(self, kind: str, job_id: int, user_id: int | None) -> None:
         if user_id is not None:
@@ -103,14 +117,18 @@ class JobOwners:
 
     @contextmanager
     def adding(self, kind: str, queue, user_id: int | None):
-        """Give every job that appears in ``queue`` during the block to ``user_id``. Adds are
-        serialized here, so another user's add can't be counted as this one's."""
-        with self._lock:
+        """Give every job that appears in ``queue`` during the block to ``user_id``. Adds to one
+        queue are serialized here, so another user's add can't be counted as this one's. A job that
+        already has an owner keeps it: the download hand-off may queue a conversion meanwhile."""
+        with self._add_locks[kind]:
             before = {j.id for j in queue.jobs()}
             yield
-            for j in queue.jobs():
-                if j.id not in before:
-                    self.set(kind, j.id, user_id)
+            if user_id is None:
+                return
+            new = [j.id for j in queue.jobs() if j.id not in before]
+            with self._lock:
+                for job_id in new:
+                    self._owners.setdefault((kind, int(job_id)), int(user_id))
 
 
 class GuardedQueueAPI:

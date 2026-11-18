@@ -6,12 +6,13 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from cbzshelf.library import Library
 from helpers import FileServer, comic_entries, make_zip
 
 from harbor import accounts as A
-from harbor.app import build, serve_harbor
+from harbor.app import build, make_on_saved, serve_harbor
 from harbor.config import Settings
 from harbor.perms import JobOwners
 from harbor.state import QueueStore
@@ -218,6 +219,48 @@ class PermissionHttpTests(unittest.TestCase):
 
 
 class OwnershipUnitTests(unittest.TestCase):
+    def test_add_and_download_hand_off_at_the_same_time(self):
+        """A user's add (still scanning) and a download's hand-off to the converter at once: the
+        hand-off doesn't wait for the add, and each conversion gets the right owner."""
+        mo, ann = 2, 1
+        tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp_dir.cleanup)
+        tmp = Path(tmp_dir.name)
+        make_zip(tmp / "mine.zip", comic_entries())
+        make_zip(tmp / "downloaded.zip", comic_entries())
+        owners = JobOwners()
+        cq, dq = build(jobs=1, image_threads=1, downloads=1, timeout=5, retries=0, owners=owners)
+        cq.set_paused(True)
+        self.addCleanup(cq.shutdown)
+        self.addCleanup(dq.shutdown)
+        owners.set("download", 41, ann)  # Ann queued download 41
+        inside, release = threading.Event(), threading.Event()
+
+        def mo_adds():
+            with owners.adding("convert", cq, mo):
+                cq.add([tmp / "mine.zip"], 80, delete_original=False)
+                inside.set()
+                release.wait(10)  # the add is still going, like a long folder scan
+
+        adder = threading.Thread(target=mo_adds)
+        adder.start()
+        self.assertTrue(inside.wait(10))
+        download = SimpleNamespace(
+            id=41,
+            after={"convert": True, "quality": 80, "delete_original": False, "method": 4},
+            linked_id=None,
+            message="",
+        )
+        on_saved = make_on_saved(cq, owners=owners)
+        hand_off = threading.Thread(target=on_saved, args=(download, tmp / "downloaded.zip"))
+        hand_off.start()
+        hand_off.join(5)
+        self.assertFalse(hand_off.is_alive(), "the hand-off waited for another user's add")
+        release.set()
+        adder.join(10)
+        by_name = {Path(j.path).name: owners.get("convert", j.id) for j in cq.jobs()}
+        self.assertEqual(by_name, {"mine.zip": mo, "downloaded.zip": ann})
+
     def test_saved_jobs_keep_their_owner(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
