@@ -693,6 +693,12 @@ function actionBtn(j) {
        : (j.state === "failed" || j.state === "cancelled") ? `<button class="link" data-act="retry" data-id="${j.id}">Retry</button>` : "";
 }
 
+// The poll redraws every second; an element is rewritten only when its HTML changed, so text
+// can be selected, links hovered and buttons clicked between polls.
+const drawn = new Map();
+function setHTML(el, html) { if (drawn.get(el) !== html) { drawn.set(el, html); el.innerHTML = html; } }
+function setText(el, text) { text = String(text); if (el.textContent !== text) el.textContent = text; }
+
 function renderConvert(st) {
   paused = st.paused;
   $("pause").textContent = paused ? "Resume" : "Pause";
@@ -701,11 +707,11 @@ function renderConvert(st) {
   const chips = chipsFor(c);
   if (bin) chips.push(`<span class="chip">saved <b>${fmt(bin - bout)}</b> (${Math.round(100 * (1 - bout / bin))}%)</span>`);
   chips.push(`<span class="chip">${st.workers} archive worker(s) · ${st.image_threads} image threads${paused ? " · <b>paused</b>" : ""}</span>`);
-  $("stats").innerHTML = chips.join("");
-  $("badge-convert").textContent = (c.queued || 0) + (c.running || 0) || "";
+  setHTML($("stats"), chips.join(""));
+  setText($("badge-convert"), (c.queued || 0) + (c.running || 0) || "");
 
-  if (!st.jobs.length) { $("rows").innerHTML = `<tr><td colspan="6" class="empty">Queue is empty.</td></tr>`; return; }
-  $("rows").innerHTML = st.jobs.map(j => {
+  if (!st.jobs.length) { setHTML($("rows"), `<tr><td colspan="6" class="empty">Queue is empty.</td></tr>`); return; }
+  setHTML($("rows"), st.jobs.map(j => {
     const dir = j.path.slice(0, j.path.length - j.name.length);
     const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
     const prog = j.state === "running" ? `<div class="prog"><i style="width:${pct}%"></i></div><span class="note">${j.done}/${j.total}</span>` : "";
@@ -717,7 +723,7 @@ function renderConvert(st) {
       <td><span class="state s-${j.state}">${j.state}</span>${prog}</td>
       <td>${j.quality}%<span class="note" title="encoder effort"> · e${j.method ?? 4}</span>${j.delete_original ? "" : ' <span class="note">keep</span>'}</td>
       <td class="size">${size}</td><td>${det}</td><td>${actionBtn(j)}</td></tr>`;
-  }).join("");
+  }).join(""));
 }
 
 function renderDownloads(st) {
@@ -728,12 +734,12 @@ function renderDownloads(st) {
   const chips = chipsFor(c);
   if (got) chips.push(`<span class="chip">downloaded <b>${fmt(got)}</b></span>`);
   chips.push(`<span class="chip">${st.download_workers} download(s) at a time${dlPaused ? " · <b>paused</b>" : ""}</span>`);
-  $("dlStats").innerHTML = chips.join("");
-  $("badge-download").textContent = (c.queued || 0) + (c.running || 0) || "";
+  setHTML($("dlStats"), chips.join(""));
+  setText($("badge-download"), (c.queued || 0) + (c.running || 0) || "");
 
-  if (!jobs.length) { $("dlRows").innerHTML = `<tr><td colspan="5" class="empty">No downloads yet.</td></tr>`; return; }
+  if (!jobs.length) { setHTML($("dlRows"), `<tr><td colspan="5" class="empty">No downloads yet.</td></tr>`); return; }
   const convById = Object.fromEntries(st.jobs.map(j => [j.id, j]));
-  $("dlRows").innerHTML = jobs.map(j => {
+  setHTML($("dlRows"), jobs.map(j => {
     let prog = "";
     if (j.state === "running") {
       prog = j.total
@@ -753,7 +759,7 @@ function renderDownloads(st) {
     return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(j.url)}</div><div class="dir">→ ${esc(j.dest_dir)}${auth}</div></td>
       <td><span class="state s-${j.state}">${j.state}</span>${prog}</td>
       <td class="size">${size}</td><td>${det}</td><td>${actionBtn(j)}</td></tr>`;
-  }).join("");
+  }).join(""));
 }
 
 function render(st) {
@@ -960,11 +966,32 @@ $("signOut").onclick = async () => {
   location.href = "/login";
 };
 
-async function refresh() {
-  try { render(await api("/api/state")); }
-  catch (e) { say($("msg"), "Lost connection to the server: " + e.message, true); }
+/* ---------- polling ---------- */
+// One timer, one request at a time. Every second while the Convert or Download tab is in view;
+// every 5 seconds on the Library or Admin tab (their actions refresh at once) or in a hidden tab.
+// refresh() during a request (an action handler) asks for one more poll right after it, and its
+// promise settles once that poll is drawn, so "await refresh()" sees the action's result.
+let pollTimer = 0, polling = null, pollAgain = null;
+function pollDelay() {
+  const tab = document.querySelector('.tab[aria-selected="true"]')?.dataset.tab;
+  return document.hidden || !["convert", "download"].includes(tab) ? 5000 : 1000;
 }
-refresh(); setInterval(refresh, 1000);
+function refresh() {
+  if (polling) return pollAgain ||= polling.then(() => { pollAgain = null; return refresh(); });
+  clearTimeout(pollTimer);
+  polling = (async () => {
+    try { render(await api("/api/state")); }  // a 401 sends the page to /login (api())
+    catch (e) { say($("msg"), "Lost connection to the server: " + e.message, true); }
+  })().finally(() => {
+    polling = null;
+    if (!pollAgain) { clearTimeout(pollTimer); pollTimer = setTimeout(refresh, pollDelay()); }
+  });
+  return polling;
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+for (const t of document.querySelectorAll(".tab"))
+  t.addEventListener("click", () => { if (["convert", "download"].includes(t.dataset.tab)) refresh(); });
+refresh();
 </script>
 </body>
 </html>
