@@ -242,11 +242,15 @@ class Accounts:
     def users(self) -> list[dict]:
         return [self._public(r) for r in self._q(f"{self.USER_SQL} ORDER BY lower(u.name)")]
 
+    def _row(self, name: str) -> sqlite3.Row | None:
+        rows = self._q(f"{self.USER_SQL} WHERE u.name = ?", (str(name or "").strip(),))
+        return rows[0] if rows else None
+
     def get(self, name: str) -> dict:
-        rows = self._q(f"{self.USER_SQL} WHERE u.name = ?", (name.strip(),))
-        if not rows:
+        row = self._row(name)
+        if row is None:
             raise KeyError(f"no user {name!r}")
-        return self._public(rows[0])
+        return self._public(row)
 
     def get_id(self, user_id: int) -> dict:
         rows = self._q(f"{self.USER_SQL} WHERE u.id = ?", (int(user_id),))
@@ -417,14 +421,10 @@ class Accounts:
         key, now = str(name or "").strip().lower(), time.time()
         with self._lock:
             self._check_lock(key, now)
-        rows = self._q(f"{self.USER_SQL} WHERE u.name = ?", (str(name or "").strip(),))
-        stored = rows[0]["pass_hash"] if rows else _DUMMY_HASH
-        ok = (
-            verify_password(str(password or "")[:MAX_PASSWORD], stored)
-            and bool(rows)
-            and not rows[0]["disabled"]
-        )
-        if not ok:
+        row = self._row(name)
+        stored = row["pass_hash"] if row is not None else _DUMMY_HASH  # same work for unknown names
+        ok = verify_password(str(password or "")[:MAX_PASSWORD], stored)
+        if not ok or row is None or row["disabled"]:
             with self._lock:
                 self._failures.setdefault(key, []).append(now)
             raise ValueError("wrong name or password")
@@ -435,9 +435,15 @@ class Accounts:
             self._db.execute(
                 "INSERT INTO sessions(id_hash, user_id, created_at, last_seen, expires_at)"
                 " VALUES (?,?,?,?,?)",
-                (_sha(sid), rows[0]["id"], now, now, now + self.session_seconds),
+                (_sha(sid), row["id"], now, now, now + self.session_seconds),
             )
-        return self._public(rows[0]), sid
+        return self._public(row), sid
+
+    def check_password(self, user_id: int, password: str) -> bool:
+        """Whether ``password`` is the user's current one (for changing it)."""
+        rows = self._q("SELECT pass_hash FROM users WHERE id = ?", (int(user_id),))
+        stored = rows[0]["pass_hash"] if rows else _DUMMY_HASH
+        return verify_password(str(password or "")[:MAX_PASSWORD], stored) and bool(rows)
 
     def logout(self, sid: str) -> None:
         if sid:
@@ -583,8 +589,6 @@ class AccountAPI:
         }
 
     def get(self, action: str, query: dict):
-        import json
-
         if action == "status":  # public: what the sign-in page needs to know
             me = self._me()
             body = {"accounts": self.accounts.count() > 0, "signed_in": bool(me)}
@@ -609,10 +613,7 @@ class AccountAPI:
             self.accounts.logout(me["_sid"])
             return 200, {"ok": True}, {"Set-Cookie": self.accounts.cookie(None)}
         if action == "password":
-            rows = self.accounts._q("SELECT pass_hash FROM users WHERE id = ?", (me["id"],))
-            if not rows or not verify_password(
-                str(body.get("current", ""))[:MAX_PASSWORD], rows[0]["pass_hash"]
-            ):
+            if not self.accounts.check_password(me["id"], str(body.get("current", ""))):
                 return 400, {"error": "your current password is wrong"}
             self.accounts.set_password(me["name"], str(body.get("new", "")), keep_session=me["_sid"])
             return 200, {"ok": True}

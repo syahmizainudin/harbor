@@ -111,6 +111,12 @@ class AccountsTests(unittest.TestCase):
         self.acc.remove("Ann")  # disabled admin
         self.assertEqual([u["name"] for u in self.acc.users()], ["Cy"])
 
+    def test_check_password(self):
+        ann = self.acc.add("Ann", PW)
+        self.assertTrue(self.acc.check_password(ann["id"], PW))
+        self.assertFalse(self.acc.check_password(ann["id"], "wrong one"))
+        self.assertFalse(self.acc.check_password(9999, PW))  # no such user: checked against a dummy hash
+
     def test_password_change_ends_other_sessions(self):
         self.acc.add("Ann", PW)
         _, keep = self.acc.login("Ann", PW)
