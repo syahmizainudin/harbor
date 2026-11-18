@@ -4,6 +4,8 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- Signed-out visitors no longer see the Convert and Download tabs for a moment while the page loads: the tabs and the pane appear once the server has said what the visitor may use.
+
 ## 0.1.1
 
 Pins cbz-webp 0.4.2, dl-queue 0.4.2 and cbz-shelf 0.4.3.
