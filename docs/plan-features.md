@@ -1,6 +1,6 @@
 # Plan: library tabs, LAN access, OPDS, job history and smaller additions
 
-Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 on harbor main (pushed, not released). Phase 3 released in the tools (cbz-webp 0.5.0, dl-queue 0.5.0, cbz-shelf 0.5.1) and on harbor main. Phase 4 released (cbz-shelf 0.5.2) and on harbor main. Phase 5 built and committed locally (dl-queue, cbz-webp, harbor); waiting for the tool tags.
+Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 on harbor main (pushed, not released). Phase 3 released in the tools (cbz-webp 0.5.0, dl-queue 0.5.0, cbz-shelf 0.5.1) and on harbor main. Phase 4 released (cbz-shelf 0.5.2) and on harbor main. Phase 5 released (dl-queue 0.5.1, cbz-webp 0.5.1, cbz-shelf 0.5.3) and on harbor main. All phases done.
 
 ## What was asked
 

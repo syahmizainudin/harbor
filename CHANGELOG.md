@@ -4,7 +4,7 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
-Pins cbz-webp 0.5.0, dl-queue 0.5.0 and cbz-shelf 0.5.2.
+Pins cbz-webp 0.5.1, dl-queue 0.5.1 and cbz-shelf 0.5.3.
 
 - **Reading from other devices:** `HARBOR_HOST`, `HARBOR_ALLOWED_HOSTS`, `HARBOR_TLS_CERT`/`HARBOR_TLS_KEY` (harbor serves HTTPS) or `HARBOR_TRUST_PROXY` (a reverse proxy on this computer does). Harbor refuses to start reachable from other devices without HTTPS, the Secure cookie, accounts and the allowed host names, and says what's missing; `harbor doctor` checks the same and when the certificate expires. The README covers WSL networking and certificates.
 - The audit log records the address each event came from (accounts migration 5).
