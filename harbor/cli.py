@@ -334,6 +334,15 @@ def cmd_ui(args) -> int:
     if settings.host not in ("127.0.0.1", "localhost") or settings.trust_proxy:
         names = ", ".join(host_list(settings))
         print(f"harbor: reachable from other devices as {names} (listening on {settings.host})", flush=True)
+    local = getattr(server, "local_server", None)
+    if local is not None:
+        import threading
+
+        threading.Thread(target=local.serve_forever, name="local-http", daemon=True).start()
+        print(
+            f"harbor: for this computer and the Chrome extension: http://127.0.0.1:{settings.local_port}/",
+            flush=True,
+        )
     print(f"harbor console: {url}  (Ctrl+C to stop; running jobs are cancelled, originals kept)", flush=True)
     if settings.source:
         print(
@@ -354,6 +363,9 @@ def cmd_ui(args) -> int:
         print("\nStopping…", flush=True)
     finally:
         server.server_close()
+        if local is not None:
+            local.shutdown()
+            local.server_close()
         close_all(save=True)
         if accounts:
             accounts.close()

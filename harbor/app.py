@@ -392,7 +392,7 @@ def serve_harbor(
         auth = HarborSignIn(accounts)
     from .config import host_list
 
-    return serve(
+    server = serve(
         port,
         UI_HTML,
         apis,
@@ -405,6 +405,18 @@ def serve_harbor(
         ssl_context=tls_context(settings),
         trust_proxy=settings.trust_proxy,
     )
+    # With harbor's own HTTPS, the Chrome extension (http://localhost only) and this computer's
+    # browser use a second, plain-HTTP listener on 127.0.0.1 with the same APIs and checks.
+    server.local_server = None
+    if settings.local_port and settings.tls_cert:
+        try:
+            server.local_server = serve(
+                settings.local_port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages, auth=auth
+            )
+        except OSError:
+            server.server_close()
+            raise
+    return server
 
 
 def tls_context(settings: Settings):

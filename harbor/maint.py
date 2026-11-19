@@ -241,6 +241,15 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
         add((OK, f"reachable from other devices as {', '.join(host_list(settings))}, through {how}"))
     if settings.tls_cert and Path(settings.tls_cert).expanduser().is_file():
         add(_cert_check(Path(settings.tls_cert).expanduser()))
+    if settings.tls_cert and not settings.local_port:
+        add(
+            (
+                WARN,
+                "the Chrome extension can't reach harbor over HTTPS: set HARBOR_LOCAL_PORT for it",
+            )
+        )
+    if settings.local_port and settings.tls_cert:
+        add(_port_check(settings.local_port))
     add(_port_check(settings.port, https=bool(settings.tls_cert)))
     return out
 

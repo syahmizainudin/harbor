@@ -6,6 +6,7 @@ import http.client
 import io
 import json
 import shutil
+import socket
 import ssl
 import subprocess
 import tempfile
@@ -91,6 +92,21 @@ class ReachRuleTests(unittest.TestCase):
             check_reach(Settings(trust_proxy=True, allowed_hosts="books.example", secure_cookie=True)), []
         )
 
+    def test_local_port_rules(self):
+        self.assertIn("only for when harbor serves HTTPS", " ".join(check_reach(Settings(local_port=9000))))
+        same = Settings(tls_cert=str(self.cert), tls_key=str(self.key), secure_cookie=True, local_port=8765)
+        self.assertIn("must differ", " ".join(check_reach(same)))
+        ok = Settings(tls_cert=str(self.cert), tls_key=str(self.key), secure_cookie=True, local_port=8766)
+        self.assertEqual(check_reach(ok), [])
+        warned = [
+            m
+            for lvl, m in maint.doctor(
+                Settings(tls_cert=str(self.cert), tls_key=str(self.key), secure_cookie=True, port=1)
+            )
+            if "Chrome extension" in m
+        ]
+        self.assertEqual(len(warned), 1)
+
     def test_certificate_files(self):
         self.assertIn("both", " ".join(check_reach(Settings(tls_cert=str(self.cert), secure_cookie=True))))
         missing = Settings(tls_cert=str(self.dir / "no.pem"), tls_key=str(self.key), secure_cookie=True)
@@ -171,6 +187,9 @@ class HttpsHarborTests(unittest.TestCase):
         server = serve_harbor(0, self.cq, self.dq, s, accounts=self.acc)
         self.servers.append(server)
         threading.Thread(target=server.serve_forever, daemon=True).start()
+        if server.local_server is not None:
+            self.servers.append(server.local_server)
+            threading.Thread(target=server.local_server.serve_forever, daemon=True).start()
         return server.server_address[1]
 
     def req(self, port, method, path, body=None, headers=None, tls=True):
@@ -206,6 +225,28 @@ class HttpsHarborTests(unittest.TestCase):
         # doctor recognises a harbor answering over HTTPS
         self.assertEqual(maint._port_check(port, https=True), (maint.OK, f"harbor is running on port {port}"))
         self.assertEqual(maint._port_check(port)[0], maint.WARN)  # asked in plain HTTP: can't tell
+
+    def test_local_port_for_the_extension(self):
+        from harbor.extension import EXTENSION_ORIGIN
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            local = sock.getsockname()[1]
+        port = self.start(tls_cert=str(self.cert), tls_key=str(self.key), local_port=local)
+        here = {"Host": f"127.0.0.1:{local}"}
+        self.assertEqual(self.req(local, "GET", "/login", headers=here, tls=False)[0], 200)
+        _, token = self.acc.create_token(1, "ext")
+        ext = {**here, "Origin": EXTENSION_ORIGIN, A.TOKEN_HEADER: token}
+        status, _, raw = self.req(local, "GET", "/api/state", headers=ext, tls=False)
+        self.assertEqual(status, 200)
+        self.assertIn("jobs", json.loads(raw))
+        page = {**here, "Origin": f"http://127.0.0.1:{local}"}
+        login = {"name": "Ann", "password": PW}
+        self.assertEqual(self.req(local, "POST", "/api/account/login", login, page, tls=False)[0], 200)
+        # only this computer's names on the local port; and HTTPS keeps working on the main one
+        self.assertEqual(self.req(local, "GET", "/login", headers={"Host": "harbor.test"}, tls=False)[0], 403)
+        self.assertEqual(self.req(port, "GET", "/login")[0], 200)
+        self.assertEqual(self.servers[-1].server_address[0], "127.0.0.1")
 
     def test_behind_a_proxy(self):
         port = self.start(trust_proxy=True)

@@ -103,6 +103,7 @@ class Settings:
     tls_cert: str = ""  # HTTPS certificate (PEM), with tls_key
     tls_key: str = ""
     trust_proxy: bool = False  # a reverse proxy on this machine serves harbor over HTTPS
+    local_port: int = 0  # with harbor's own HTTPS: a plain-HTTP port on 127.0.0.1 for the extension
     download_rate: int = 0  # bytes a second for all downloads together; 0 = no limit
     download_hours: str = ""  # "01:00-07:00": new downloads start only then
     watch_dirs: str = ""  # folders whose new archives are converted on their own, ";"-separated
@@ -242,6 +243,7 @@ VARS = {
     "tls_cert": ("HARBOR_TLS_CERT", _text),
     "tls_key": ("HARBOR_TLS_KEY", _text),
     "trust_proxy": ("HARBOR_TRUST_PROXY", _bool),
+    "local_port": ("HARBOR_LOCAL_PORT", _int(0, 65535)),
     "download_rate": ("HARBOR_DOWNLOAD_RATE", _rate),
     "download_hours": ("HARBOR_DOWNLOAD_HOURS", _hours),
     "watch_dirs": ("HARBOR_WATCH_DIRS", _text),
@@ -286,6 +288,10 @@ def check_reach(s: Settings) -> list[str]:
             problems.append(
                 "set HARBOR_ALLOWED_HOSTS to the name(s) or address(es) devices use to reach harbor"
             )
+    if s.local_port and not s.tls_cert:
+        problems.append("HARBOR_LOCAL_PORT is only for when harbor serves HTTPS itself (HARBOR_TLS_CERT)")
+    if s.local_port and s.local_port == s.port:
+        problems.append("HARBOR_LOCAL_PORT must differ from HARBOR_PORT")
     if (exposed or s.tls_cert) and not s.secure_cookie:
         problems.append("harbor is served over HTTPS: set HARBOR_SECURE_COOKIE=true")
     return problems
