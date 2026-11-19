@@ -50,6 +50,10 @@
   details.hist > summary { cursor: pointer; list-style-position: inside; }
   details.hist .more { text-align: center; margin-top: 8px; }
   /* admin */
+  .subtabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .subtabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; color: var(--muted); }
+  .subtabs button:hover { color: var(--text); filter: none; }
+  .subtabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
   .matrix { border-collapse: collapse; }
   .matrix th, .matrix td { padding: 6px 10px; border-top: 1px solid var(--line); text-align: center; white-space: nowrap; }
   .matrix th:first-child, .matrix td:first-child { text-align: left; white-space: normal; }
@@ -350,6 +354,7 @@
   </div></div>
   <!-- ===================== Admin ===================== -->
   <div id="pane-admin" role="tabpanel" aria-labelledby="tab-admin" hidden><div class="pane-inner">
+    <nav class="subtabs" id="admTabs" role="tablist" aria-label="Admin sections"></nav>
     <section class="panel" id="admUsersBox" hidden>
       <div class="bar-head"><strong>Users</strong></div>
       <table>
@@ -551,10 +556,11 @@ function applyPerms(next) {
   if (!has("delete_original")) $("del").checked = false;
   $("dlConvert").disabled = !has("convert");
   if (!has("convert")) $("dlConvert").checked = false;
-  $("admUsersBox").hidden = !has("users.manage") || perms === null;
-  $("admRolesBox").hidden = !(has("users.manage") || has("roles.manage")) || perms === null;
-  $("admSeriesBox").hidden = !has("library.edit") || perms === null;
-  $("admAuditBox").hidden = !has("users.manage") || perms === null;
+  admAllowed.users = has("users.manage") && perms !== null;
+  admAllowed.roles = (has("users.manage") || has("roles.manage")) && perms !== null;
+  admAllowed.series = has("library.edit") && perms !== null;
+  admAllowed.audit = has("users.manage") && perms !== null;
+  renderAdminTabs();
   if (!$("pane-admin").hidden) { loadAdminSeries(); loadAudit(); }
 }
 
@@ -900,6 +906,34 @@ function render(st) {
 }
 
 /* ---------- admin ---------- */
+// One sub-tab per section. A section is offered only if the user may use it (admAllowed); only the
+// chosen one is shown, and its data loads when it's shown.
+const ADMIN_SECTIONS = [
+  ["users", "admUsersBox", "Users"],
+  ["roles", "admRolesBox", "Roles and permissions"],
+  ["libs", "admLibsBox", "Library access"],
+  ["audit", "admAuditBox", "Audit log"],
+  ["series", "admSeriesBox", "Series"],
+];
+const admAllowed = { users: false, roles: false, libs: false, audit: false, series: false };
+let admTab = store.get("adminTab", "");
+function renderAdminTabs() {
+  const offered = ADMIN_SECTIONS.filter(([key]) => admAllowed[key]);
+  if (!offered.some(([key]) => key === admTab)) admTab = offered[0]?.[0] || "";
+  setHTML($("admTabs"), offered.map(([key, , label]) =>
+    `<button role="tab" data-adm="${key}" aria-selected="${key === admTab}">${label}</button>`).join(""));
+  $("admTabs").hidden = offered.length < 2;
+  for (const [key, box] of ADMIN_SECTIONS) $(box).hidden = !admAllowed[key] || key !== admTab;
+}
+function showAdminTab(key) {
+  if (key === admTab) return;
+  admTab = key;
+  store.set("adminTab", key);
+  renderAdminTabs();
+  if (key === "series") loadAdminSeries();
+  if (key === "audit") loadAudit();
+}
+$("admTabs").onclick = e => { const b = e.target.closest("[data-adm]"); if (b) showAdminTab(b.dataset.adm); };
 let auditItems = [];
 async function loadAudit(more = false) {
   if ($("admAuditBox").hidden) return;
@@ -950,7 +984,7 @@ function renderAdmin(st) {
 }
 let admLibs = "";
 function renderAdminLibraries(libs, roles) {
-  $("admLibsBox").hidden = !libs;
+  if (admAllowed.libs !== !!libs) { admAllowed.libs = !!libs; renderAdminTabs(); }
   if (!libs) return;
   const key = JSON.stringify([libs, roles, perms]);
   if (key === admLibs || $("admLibs").contains(document.activeElement)) return;
