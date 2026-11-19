@@ -4,6 +4,10 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+## 0.2.1
+
+Pins cbz-webp 0.5.1, dl-queue 0.5.1 and cbz-shelf 0.5.3 (unchanged).
+
 - **The Chrome extension works when harbor serves HTTPS itself:** `HARBOR_LOCAL_PORT` adds a plain-HTTP listener on 127.0.0.1 only, with the same pages and checks, for the extension and this computer's browser. `harbor doctor` warns when harbor serves HTTPS without one.
 
 ## 0.2.0
