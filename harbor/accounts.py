@@ -87,7 +87,12 @@ MIGRATIONS: list[str] = [
        CREATE INDEX audit_at ON audit(at)""",
     # 5: the address each audit event came from (127.0.0.1 unless harbor is reachable from the LAN).
     """ALTER TABLE audit ADD COLUMN client TEXT NOT NULL DEFAULT ''""",
+    # 6: what a token is for. "extension": the Chrome extension, as before. "reader": a reader app
+    # (OPDS) signing in with HTTP Basic, which may only read the library.
+    """ALTER TABLE tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'extension'""",
 ]
+TOKEN_SCOPES = {"extension": "Chrome extension", "reader": "Reader app"}
+READER_PERMS = ("library.read",)  # all a reader token can do, if its account may
 AUDIT_DAY = 86400
 SESSION_HANDLE = 16  # hex characters of a session's id hash shown to its owner, to sign it out
 _req = threading.local()  # per request thread: the browser's User-Agent, set by HarborSignIn.user
@@ -637,30 +642,41 @@ class Accounts:
         return {"items": [dict(r) for r in rows], "total": total}
 
     # ------------------------------------------------------------ extension tokens
-    def create_token(self, user_id: int, label: str) -> tuple[dict, str]:
-        label = (label or "").strip()[:80] or "Chrome extension"
+    def create_token(self, user_id: int, label: str, scope: str = "extension") -> tuple[dict, str]:
+        if scope not in TOKEN_SCOPES:
+            raise ValueError(f"a token is for one of: {', '.join(TOKEN_SCOPES)}")
+        label = (label or "").strip()[:80] or TOKEN_SCOPES[scope]
         token = TOKEN_PREFIX + secrets.token_urlsafe(32)
         with self._lock:
             tid = self._db.execute(
-                "INSERT INTO tokens(hash, user_id, label, created_at) VALUES (?,?,?,?)",
-                (_sha(token), int(user_id), label, time.time()),
+                "INSERT INTO tokens(hash, user_id, label, created_at, scope) VALUES (?,?,?,?,?)",
+                (_sha(token), int(user_id), label, time.time(), scope),
             ).lastrowid
-        return {"id": tid, "label": label}, token
+        return {"id": tid, "label": label, "scope": scope}, token
 
     def tokens(self, user_id: int) -> list[dict]:
         return [
-            {"id": r["id"], "label": r["label"], "created_at": r["created_at"], "last_used": r["last_used"]}
+            {
+                "id": r["id"],
+                "label": r["label"],
+                "scope": r["scope"],
+                "created_at": r["created_at"],
+                "last_used": r["last_used"],
+            }
             for r in self._q("SELECT * FROM tokens WHERE user_id = ? ORDER BY id", (int(user_id),))
         ]
 
     def revoke_token(self, user_id: int, token_id: int) -> bool:
         return bool(self._x("DELETE FROM tokens WHERE id = ? AND user_id = ?", (int(token_id), int(user_id))))
 
-    def token_user(self, token: str) -> dict | None:
+    def token_user(self, token: str, scope: str | None = None, name: str | None = None) -> dict | None:
+        """The user a token belongs to, with ``token_scope``. A reader token's user has at most
+        ``READER_PERMS``. ``scope``/``name``: accept only a token of that scope, of that account."""
         if not token or not token.startswith(TOKEN_PREFIX):
             return None
         rows = self._q(
-            """SELECT u.*, r.name AS role, r.perms_json, r.locked, p.prefs_json, t.id AS tid, t.last_used
+            """SELECT u.*, r.name AS role, r.perms_json, r.locked, p.prefs_json,
+                      t.id AS tid, t.last_used, t.scope
                FROM tokens t JOIN users u ON u.id = t.user_id LEFT JOIN roles r ON r.id = u.role_id
                LEFT JOIN prefs p ON p.user_id = u.id
                WHERE t.hash = ? AND u.disabled = 0""",
@@ -668,9 +684,17 @@ class Accounts:
         )
         if not rows:
             return None
-        if (rows[0]["last_used"] or 0) < time.time() - TOUCH_EVERY:
-            self._x("UPDATE tokens SET last_used = ? WHERE id = ?", (time.time(), rows[0]["tid"]))
-        return self._public(rows[0])
+        row = rows[0]
+        if scope is not None and row["scope"] != scope:
+            return None
+        if name is not None and row["name"].lower() != name.strip().lower():
+            return None
+        if (row["last_used"] or 0) < time.time() - TOUCH_EVERY:
+            self._x("UPDATE tokens SET last_used = ? WHERE id = ?", (time.time(), row["tid"]))
+        user = {**self._public(row), "token_scope": row["scope"]}
+        if row["scope"] == "reader":
+            user["perms"] = [p for p in user["perms"] if p in READER_PERMS]
+        return user
 
 
 def session_id(headers) -> str:
@@ -680,6 +704,18 @@ def session_id(headers) -> str:
     except CookieError:
         return ""
     return jar[COOKIE].value if COOKIE in jar else ""
+
+
+def basic_credentials(header: str) -> tuple[str, str] | None:
+    """(name, secret) from an ``Authorization: Basic`` header, or None."""
+    scheme, _, value = header.strip().partition(" ")
+    if scheme.lower() != "basic" or not value:
+        return None
+    try:
+        name, sep, secret = base64.b64decode(value.strip(), validate=True).decode("utf-8").partition(":")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return (name, secret) if sep else None
 
 
 class HarborSignIn:
@@ -703,16 +739,22 @@ class HarborSignIn:
         return not getattr(self._request, "machine", False) and guest_may(method, path)
 
     def allows(self, user, method: str, path: str) -> bool:
-        """Permissions on what the console server serves itself."""
-        from .perms import may_browse_folders
+        """Permissions on what the console server serves itself, and a reader token's limit: it
+        may only read the library (``GET /api/library/...``), never the page, state or anything else."""
+        from .perms import LIBRARY_PREFIX, may_browse_folders
 
+        if user and user.get("token_scope") == "reader":
+            return method == "GET" and path.startswith(LIBRARY_PREFIX)
         return may_browse_folders(user) if path == "/api/dirs" else True
 
     def user(self, headers) -> dict | None:
         _req.agent = (headers.get("User-Agent", "") if headers else "")[:200]
         token = headers.get(TOKEN_HEADER, "") if headers else ""
         origin = headers.get("Origin", "") if headers else ""
-        self._request.machine = bool(token) or origin.startswith("chrome-extension://")
+        basic = basic_credentials(headers.get("Authorization", "") if headers else "")
+        self._request.machine = bool(token) or bool(basic) or origin.startswith("chrome-extension://")
+        if basic:  # a reader app: account name and a reader token, never the account's password
+            return self.accounts.token_user(basic[1], scope="reader", name=basic[0])
         if token:
             return self.accounts.token_user(token)  # with "prefs", from the same query
         sid = session_id(headers)
@@ -803,8 +845,12 @@ class AccountAPI:
         if action == "prefs":
             return 200, acc.set_prefs(me["id"], body.get("changes") or {})
         if action == "token-create":
-            info, token = acc.create_token(me["id"], str(body.get("label", "")))
-            acc.audit("token created", me["name"], info["label"], actor=me)
+            info, token = acc.create_token(
+                me["id"], str(body.get("label", "")), str(body.get("scope", "extension"))
+            )
+            acc.audit(
+                "token created", me["name"], f"{TOKEN_SCOPES[info['scope']]}: {info['label']}", actor=me
+            )
             return 200, {**info, "token": token}
         if action == "token-revoke":
             ok = acc.revoke_token(me["id"], int(body["id"]))

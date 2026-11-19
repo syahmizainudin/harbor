@@ -33,6 +33,10 @@ SIGN_IN = {"error": "sign in first"}
 GUEST_PERMS = frozenset({"library.read"})
 GUEST_PAGES = frozenset({"/", "/library", "/api/state"})
 LIBRARY_PREFIX = "/api/library/"
+# A signed-out reader app gets a Basic challenge for these instead of the guest view, so it asks
+# for its account name and reader token.
+READER_APP_ACTIONS = frozenset({"opds", "file"})
+BASIC_CHALLENGE = 'Basic realm="harbor library", charset="UTF-8"'
 GUEST_LIBRARY_POSTS = frozenset(
     {"progress", "clear-progress", "reader-settings", "prefs", "hide-continue", "clear-continue"}
 )
@@ -93,6 +97,10 @@ class GuestSafeLibraryAPI:
         return self.inner.state()
 
     def get(self, action: str, query: dict):
+        if current_user() is None and action in READER_APP_ACTIONS:
+            # Reader apps sign in with HTTP Basic (a reader token), and only ask after this challenge.
+            body = b'{"error": "sign in with your account name and a reader token"}'
+            return 401, {"Content-Type": "application/json", "WWW-Authenticate": BASIC_CHALLENGE}, body
         return self.inner.get(action, query)
 
     def post(self, action: str, body: dict):

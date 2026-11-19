@@ -446,11 +446,14 @@
       <div class="msg" id="sessionMsg"></div>
     </section>
     <section>
-      <h3>Chrome extension</h3>
-      <p class="note">The extension signs in with a token. Create one, paste it into the extension's popup, and revoke it here if the computer is lost.</p>
+      <h3>Tokens: Chrome extension and reader apps</h3>
+      <p class="note">The Chrome extension and reader apps (Panels, Chunky, KOReader…) sign in with a token instead of your password. Create one for each, and revoke it here if a device is lost. A reader-app token can only read the library.</p>
       <ul class="tokens" id="tokenList"></ul>
-      <div class="field"><input type="text" id="tokenLabel" placeholder="Name, such as Work laptop" aria-label="Token name"><button id="tokenNew">Create token</button></div>
-      <div id="tokenShow" hidden><div class="note">Copy it now; it won't be shown again.</div><div class="newtoken mono" id="tokenValue"></div><button class="small" id="tokenCopy">Copy</button></div>
+      <div class="field">
+        <select id="tokenScope" aria-label="Token for"><option value="extension">Chrome extension</option><option value="reader">Reader app (OPDS)</option></select>
+        <input type="text" id="tokenLabel" placeholder="Name, such as Work laptop" aria-label="Token name"><button id="tokenNew">Create token</button></div>
+      <div id="tokenShow" hidden><div class="note">Copy it now; it won't be shown again.</div><div class="newtoken mono" id="tokenValue"></div><button class="small" id="tokenCopy">Copy</button>
+        <div class="note" id="tokenReaderHow" hidden style="margin-top:6px">In the reader app, add an OPDS catalog with the address <b class="mono" id="opdsUrl"></b>, your account name <b id="opdsUser"></b> as the user name, and this token as the password.</div></div>
       <div class="msg" id="tokenMsg"></div>
     </section>
   </div>
@@ -1034,8 +1037,8 @@ async function loadAdminSeries() {
 }
 function renderAdminSeries() {
   const f = $("asFilter").value.trim().toLowerCase();
-  const rows = adminSeries.filter(s => !f || s.name.toLowerCase().includes(f) || s.folder.toLowerCase().includes(f));
-  $("admSeries").innerHTML = rows.map(s => `<tr><td>${esc(s.name)}</td><td class="name"><span class="dir">${esc(s.folder)}</span></td>
+  const rows = adminSeries.filter(s => !f || s.name.toLowerCase().includes(f) || (s.folder || "").toLowerCase().includes(f));
+  $("admSeries").innerHTML = rows.map(s => `<tr><td>${esc(s.name)}</td><td class="name"><span class="dir">${esc(s.folder || "")}</span></td>
     <td>${s.books}</td><td><button class="small" data-series-edit="${s.id}">Edit</button></td></tr>`).join("")
     || `<tr><td colspan="4" class="empty">No series${f ? " match" : " yet"}.</td></tr>`;
 }
@@ -1050,7 +1053,7 @@ $("admSeries").onclick = async e => {
   $("seAuthors").value = list(u.authors); $("seAuthors").placeholder = list(seOpen.authors);
   $("seTags").value = list(u.tags); $("seTags").placeholder = list(seOpen.tags);
   $("seSummary").value = u.summary || "";
-  $("seFolder").textContent = seOpen.folder;
+  $("seFolder").textContent = seOpen.folder || "";
   say($("seMsg"), "");
   $("seriesEditDlg").showModal();
 };
@@ -1081,7 +1084,7 @@ function renderAccount(a) {
   $("acctBtn").title = `Signed in as ${a.name}${a.admin ? " (admin)" : ""}`;
   $("acctTitle").textContent = `Account: ${a.name}`;
   $("pwUser").value = a.name;
-  $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)}<br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
+  $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)} <span class="note">· ${t.scope === "reader" ? "reader app" : "Chrome extension"}</span><br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
     <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
 }
 $("acctBtn").onclick = () => { say($("pwMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); $("tokenShow").hidden = true; loadSessions(); $("acctDlg").showModal(); };
@@ -1121,9 +1124,12 @@ $("pwForm").onsubmit = async e => {
 };
 $("tokenNew").onclick = async () => {
   try {
-    const t = await api("/api/account/token-create", { label: $("tokenLabel").value });
+    const t = await api("/api/account/token-create", { label: $("tokenLabel").value, scope: $("tokenScope").value });
     $("tokenValue").textContent = t.token;
     $("tokenShow").hidden = false;
+    $("tokenReaderHow").hidden = t.scope !== "reader";
+    $("opdsUrl").textContent = location.origin + "/api/library/opds";
+    $("opdsUser").textContent = account?.name || "";
     $("tokenLabel").value = "";
     say($("tokenMsg"), "");
     refresh();

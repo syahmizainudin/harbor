@@ -145,6 +145,15 @@ pm2 restart harbor                           # after changing .env or updating
 
 To start pm2 itself when WSL starts, run the command `pm2 startup` prints (it needs `sudo`).
 
+## Reader apps (OPDS)
+
+Harbor's library is an [OPDS](https://opds.io/) catalog, so reader apps such as Panels, Chunky and KOReader can browse it, search it, stream comic pages and download books for offline reading.
+
+1. In **Your account**, choose **Reader app (OPDS)**, give the token a name (such as "Phone") and click **Create token**. Copy it; it's shown once.
+2. In the app, add an OPDS catalog: the address is harbor's address followed by `/api/library/opds` (shown under the token), the user name is your account name, and the password is the token.
+
+A reader-app token can only read the library: it sees the libraries your role may see, and can't open the page, queue jobs or change anything. Revoke it in **Your account** if the device is lost. Your account password never works in a reader app. Reading progress stays in the app, not in harbor. To use it from a phone, harbor must be reachable from it (below).
+
 ## Reading from other devices
 
 By default harbor is reachable only from this computer. To read on a phone or tablet on your network, harbor must be served over HTTPS, either by harbor itself or by a reverse proxy, and it refuses to start otherwise. It also needs:
