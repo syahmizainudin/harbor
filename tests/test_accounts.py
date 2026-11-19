@@ -154,7 +154,6 @@ class AccountsTests(unittest.TestCase):
         self.assertEqual(A.session_id({"Cookie": "bad\x00cookie"}), "")
 
 
-
 class MigrationTests(unittest.TestCase):
     def test_older_database_is_upgraded_and_keeps_its_accounts(self):
         with tempfile.TemporaryDirectory() as tmp:

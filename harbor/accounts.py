@@ -375,16 +375,21 @@ class Accounts:
             raise ValueError(f"{r['name']} still has {r['members']} member(s); give them another role first")
         with self._lock:
             self._db.execute("BEGIN")
-            self._db.execute("DELETE FROM roles WHERE id = ?", (r["id"],))
-            for lid, rule in self.library_rules().items():  # a removed role sees nothing anyway
-                if rule["roles"] is not None and r["id"] in rule["roles"]:
-                    roles = [x for x in rule["roles"] if x != r["id"]]
-                    self._db.execute(
-                        "UPDATE library_access SET roles_json = ? WHERE library_id = ?",
-                        (json.dumps(roles), lid),
-                    )
-            self._db.execute("COMMIT")
-            self._rules = None
+            try:
+                self._db.execute("DELETE FROM roles WHERE id = ?", (r["id"],))
+                for lid, rule in self.library_rules().items():  # a removed role sees nothing anyway
+                    if rule["roles"] is not None and r["id"] in rule["roles"]:
+                        roles = [x for x in rule["roles"] if x != r["id"]]
+                        self._db.execute(
+                            "UPDATE library_access SET roles_json = ? WHERE library_id = ?",
+                            (json.dumps(roles), lid),
+                        )
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+            finally:
+                self._rules = None
 
     # ------------------------------------------------------------ library access
     def library_rules(self) -> dict[int, dict]:
