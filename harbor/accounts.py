@@ -85,6 +85,8 @@ MIGRATIONS: list[str] = [
            id INTEGER PRIMARY KEY, at REAL NOT NULL, actor_id INTEGER, actor TEXT NOT NULL DEFAULT '',
            action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '');
        CREATE INDEX audit_at ON audit(at)""",
+    # 5: the address each audit event came from (127.0.0.1 unless harbor is reachable from the LAN).
+    """ALTER TABLE audit ADD COLUMN client TEXT NOT NULL DEFAULT ''""",
 ]
 AUDIT_DAY = 86400
 SESSION_HANDLE = 16  # hex characters of a session's id hash shown to its owner, to sign it out
@@ -607,11 +609,18 @@ class Accounts:
             actor_id, actor_name = actor.get("id"), actor.get("name", "")
         else:
             actor_id, actor_name = None, str(actor or "")
+        try:
+            from cbzwebp.web import current_client
+
+            client = current_client()  # '' outside a request (the command line)
+        except ImportError:
+            client = ""
         now = time.time()
         with self._lock:
             self._db.execute(
-                "INSERT INTO audit(at, actor_id, actor, action, target, detail) VALUES (?,?,?,?,?,?)",
-                (now, actor_id, actor_name[:80], action, str(target)[:200], str(detail)[:500]),
+                "INSERT INTO audit(at, actor_id, actor, action, target, detail, client)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (now, actor_id, actor_name[:80], action, str(target)[:200], str(detail)[:500], client[:64]),
             )
             if self.audit_days and now - self._audit_pruned > AUDIT_DAY:
                 self._audit_pruned = now

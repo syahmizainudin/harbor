@@ -36,8 +36,9 @@ def missing_dependencies() -> list[str]:
     import inspect
 
     missing = []
-    if "auth" not in inspect.signature(serve).parameters:
-        missing.append("cbz-webp serve(auth=...)")
+    for param in ("auth", "ssl_context", "trust_proxy"):
+        if param not in inspect.signature(serve).parameters:
+            missing.append(f"cbz-webp serve({param}=...)")
     for param in ("can", "visible"):
         if param not in inspect.signature(LibraryAPI).parameters:
             missing.append(f"cbz-shelf LibraryAPI({param}=...)")
@@ -373,4 +374,30 @@ def serve_harbor(
         apis["/api/admin/"] = AdminAPI(accounts, library)
         pages["/login"] = LOGIN_HTML
         auth = HarborSignIn(accounts)
-    return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages, auth=auth)
+    from .config import host_list
+
+    return serve(
+        port,
+        UI_HTML,
+        apis,
+        ARCHIVE_EXTS,
+        settings.allowed_origins(),
+        pages,
+        auth=auth,
+        host=settings.host,
+        allowed_hosts=host_list(settings),
+        ssl_context=tls_context(settings),
+        trust_proxy=settings.trust_proxy,
+    )
+
+
+def tls_context(settings: Settings):
+    """The HTTPS context from HARBOR_TLS_CERT/KEY, or None."""
+    if not settings.tls_cert:
+        return None
+    import ssl
+
+    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(Path(settings.tls_cert).expanduser(), Path(settings.tls_key).expanduser())
+    return ctx

@@ -98,6 +98,10 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_HISTORY_DB` | `~/.local/share/harbor/history.db` | Finished conversions and downloads (the History panels) |
 | | `HARBOR_HISTORY_DAYS` | 90 | Days finished jobs are kept in the history. 0 keeps them forever |
 | | `HARBOR_AUDIT_DAYS` | 365 | Days audit log events are kept. 0 keeps them forever |
+| | `HARBOR_HOST` | `127.0.0.1` | Address to listen on. Anything else needs HTTPS: see [Reading from other devices](#reading-from-other-devices) |
+| | `HARBOR_ALLOWED_HOSTS` | | Names or addresses other devices use to reach harbor, comma-separated |
+| | `HARBOR_TLS_CERT`, `HARBOR_TLS_KEY` | | HTTPS certificate and key (PEM). The key must be readable only by you |
+| | `HARBOR_TRUST_PROXY` | `false` | A reverse proxy on this computer serves harbor over HTTPS |
 | `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
@@ -140,6 +144,59 @@ pm2 restart harbor                           # after changing .env or updating
 ```
 
 To start pm2 itself when WSL starts, run the command `pm2 startup` prints (it needs `sudo`).
+
+## Reading from other devices
+
+By default harbor is reachable only from this computer. To read on a phone or tablet on your network, harbor must be served over HTTPS, either by harbor itself or by a reverse proxy, and it refuses to start otherwise. It also needs:
+
+- `HARBOR_SECURE_COOKIE=true`;
+- accounts on (the default);
+- `HARBOR_ALLOWED_HOSTS`, the names or addresses your devices use.
+
+`harbor doctor` checks all of this and says what's missing.
+
+**Before you open it up:** signed-out visitors can read every library unless you untick **Guests** for it in **Admin → Library access**. Anyone on your network can then see those books. Everything else needs an account.
+
+### Option 1: harbor serves HTTPS
+
+```bash
+# .env
+HARBOR_HOST=0.0.0.0
+HARBOR_ALLOWED_HOSTS=my-pc.tail1234.ts.net,192.168.1.20
+HARBOR_TLS_CERT=~/.config/harbor/cert.pem
+HARBOR_TLS_KEY=~/.config/harbor/key.pem
+HARBOR_SECURE_COOKIE=true
+```
+
+A certificate your devices trust without warnings is easiest to get with [Tailscale](https://tailscale.com/kb/1153/enabling-https): `tailscale cert my-pc.tail1234.ts.net` writes one for your machine's Tailscale name, and it works from any device on your tailnet. [mkcert](https://github.com/FiloSottile/mkcert) works on a home network too, but then every phone needs mkcert's root certificate installed. Keep the key private: `chmod 600 key.pem`.
+
+### Option 2: a reverse proxy on this computer
+
+Keep `HARBOR_HOST=127.0.0.1` and let the proxy do HTTPS. Harbor believes the proxy's `X-Forwarded-Proto`, `X-Forwarded-Host` and `X-Forwarded-For` headers only on connections from this computer. For example, with [Caddy](https://caddyserver.com/):
+
+```
+harbor.lan {
+    tls internal
+    reverse_proxy 127.0.0.1:8765
+}
+```
+
+```bash
+# .env
+HARBOR_TRUST_PROXY=true
+HARBOR_ALLOWED_HOSTS=harbor.lan
+HARBOR_SECURE_COOKIE=true
+```
+
+### WSL
+
+WSL 2 is reachable from Windows but not from other devices, until you do one of these:
+
+- **Mirrored networking** (Windows 11): add `networkingMode=mirrored` under `[wsl2]` in `%UserProfile%\.wslconfig`, run `wsl --shutdown`, and allow the port through the Windows firewall (`New-NetFirewallRule -DisplayName harbor -Direction Inbound -Protocol TCP -LocalPort 8765 -Action Allow` in an admin PowerShell). Mirrored mode also has its own Hyper-V firewall; see [Microsoft's WSL networking page](https://learn.microsoft.com/windows/wsl/networking) if connections still don't arrive.
+- **A port proxy:** `netsh interface portproxy add v4tov4 listenport=8765 listenaddress=0.0.0.0 connectport=8765 connectaddress=<WSL address>` plus the same firewall rule. The WSL address (`hostname -I` in WSL) changes when WSL restarts, so the rule needs updating then. With a proxy, harbor sees every client as the Windows machine.
+- **Tailscale inside WSL** makes WSL its own device on your tailnet, with no Windows changes.
+
+The audit log records the address each event came from.
 
 ## Settings file (`.env`)
 

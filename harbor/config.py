@@ -98,6 +98,11 @@ class Settings:
     history_db: str = ""  # empty: history.default_history_db()
     history_days: int = 90  # finished jobs kept in the history; 0 = forever
     audit_days: int = 365  # account and admin events kept in the audit log; 0 = forever
+    host: str = "127.0.0.1"  # address to listen on; anything but loopback needs HTTPS (check_reach)
+    allowed_hosts: str = ""  # host names the page may be reached by, comma-separated
+    tls_cert: str = ""  # HTTPS certificate (PEM), with tls_key
+    tls_key: str = ""
+    trust_proxy: bool = False  # a reverse proxy on this machine serves harbor over HTTPS
     source: str | None = None  # the .env file used, for the startup message
 
     def page_defaults(self) -> dict:
@@ -161,6 +166,22 @@ def _origins(v: str, name: str) -> str:
     return v
 
 
+def _host(v: str, name: str) -> str:
+    v = v.strip()
+    if not re.fullmatch(r"[0-9.]+|[0-9A-Fa-f:]+|localhost", v):
+        raise ConfigError(f"{name} must be an IP address to listen on (such as 0.0.0.0), got {v!r}")
+    return v
+
+
+def _host_names(v: str, name: str) -> str:
+    for h in (x.strip() for x in v.split(",")):
+        if h and not re.fullmatch(r"[A-Za-z0-9.-]+|[0-9A-Fa-f:]+", h):
+            raise ConfigError(f"{name}: {h!r} is not a host name or address (no scheme, port or path)")
+        if h in ("*", "0.0.0.0"):
+            raise ConfigError(f"{name}: list real names, not {h!r}")
+    return v
+
+
 def _text(v: str, name: str) -> str:
     if any(c in v for c in "\r\n\0"):
         raise ConfigError(f"{name} contains a line break")
@@ -192,7 +213,52 @@ VARS = {
     "history_db": ("HARBOR_HISTORY_DB", _text),
     "history_days": ("HARBOR_HISTORY_DAYS", _int(0, 3650)),
     "audit_days": ("HARBOR_AUDIT_DAYS", _int(0, 3650)),
+    "host": ("HARBOR_HOST", _host),
+    "allowed_hosts": ("HARBOR_ALLOWED_HOSTS", _host_names),
+    "tls_cert": ("HARBOR_TLS_CERT", _text),
+    "tls_key": ("HARBOR_TLS_KEY", _text),
+    "trust_proxy": ("HARBOR_TRUST_PROXY", _bool),
 }
+
+LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
+def check_reach(s: Settings) -> list[str]:
+    """Why these settings may not start harbor (empty when they may). Anything that lets another
+    device reach harbor needs HTTPS (its own or a proxy's), the Secure cookie, accounts, and the
+    host names it is reached by. Plan decision 13 (docs/plan-features.md)."""
+    problems = []
+    if bool(s.tls_cert) != bool(s.tls_key):
+        problems.append("set both HARBOR_TLS_CERT and HARBOR_TLS_KEY, or neither")
+    for name, path in (("HARBOR_TLS_CERT", s.tls_cert), ("HARBOR_TLS_KEY", s.tls_key)):
+        if path and not Path(path).expanduser().is_file():
+            problems.append(f"{name}: no such file: {path}")
+    key = Path(s.tls_key).expanduser() if s.tls_key else None
+    if key and key.is_file() and key.stat().st_mode & 0o077:
+        problems.append(f"HARBOR_TLS_KEY {key} can be read by other users: chmod 600 {key}")
+    local = s.host in LOOPBACK_HOSTS
+    if s.trust_proxy and not local:
+        problems.append("HARBOR_TRUST_PROXY needs HARBOR_HOST=127.0.0.1: the proxy runs on this machine")
+    exposed = not local or s.trust_proxy
+    if exposed:
+        if not local and not s.tls_cert:
+            problems.append(
+                f"HARBOR_HOST={s.host} lets other devices connect: HTTPS is required"
+                " (HARBOR_TLS_CERT and HARBOR_TLS_KEY, or a reverse proxy with HARBOR_TRUST_PROXY)"
+            )
+        if not s.accounts:
+            problems.append("harbor can be reached from other devices: HARBOR_ACCOUNTS must be true")
+        if not s.allowed_hosts.strip():
+            problems.append(
+                "set HARBOR_ALLOWED_HOSTS to the name(s) or address(es) devices use to reach harbor"
+            )
+    if (exposed or s.tls_cert) and not s.secure_cookie:
+        problems.append("harbor is served over HTTPS: set HARBOR_SECURE_COOKIE=true")
+    return problems
+
+
+def host_list(s: Settings) -> list[str]:
+    return [h.strip() for h in s.allowed_hosts.split(",") if h.strip()]
 
 
 def load_settings(

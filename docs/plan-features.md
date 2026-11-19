@@ -1,6 +1,6 @@
 # Plan: library tabs, LAN access, OPDS, job history and smaller additions
 
-Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 built on harbor main, not released.
+Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 on harbor main (pushed, not released). Phase 3 built and committed locally in cbz-webp, dl-queue and harbor; waiting for the tool tags.
 
 ## What was asked
 
@@ -76,7 +76,7 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
     - tokens created and revoked;
     - library folders and libraries added or removed.
 
-    It records who acted, on what and when, never a password, session id or token. A failed sign-in names the account only when it exists, since a password typed into the name field must not be recorded. (Built without the client address: it is 127.0.0.1 for everyone until LAN access, so phase 3 adds it.) Admin tab section, `users.manage`. Same retention setting as history (`HARBOR_AUDIT_DAYS`, default 365).
+    It records who acted, on what and when, never a password, session id or token. A failed sign-in names the account only when it exists, since a password typed into the name field must not be recorded. (The client address came with phase 3: accounts migration 5.) Admin tab section, `users.manage`. Same retention setting as history (`HARBOR_AUDIT_DAYS`, default 365).
 
 ### Tool changes
 

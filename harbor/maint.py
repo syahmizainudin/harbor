@@ -232,8 +232,33 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
         except (OSError, ValueError) as e:
             add((WARN, f"saved jobs {state} won't load ({e}); harbor moves it to .bad at start"))
 
+    from .config import check_reach, host_list
+
+    for problem in check_reach(settings):
+        add((FAIL, problem))
+    if settings.host not in ("127.0.0.1", "localhost", "::1") or settings.trust_proxy:
+        how = "a reverse proxy" if settings.trust_proxy else f"HTTPS on {settings.host}"
+        add((OK, f"reachable from other devices as {', '.join(host_list(settings))}, through {how}"))
+    if settings.tls_cert and Path(settings.tls_cert).expanduser().is_file():
+        add(_cert_check(Path(settings.tls_cert).expanduser()))
     add(_port_check(settings.port))
     return out
+
+
+def _cert_check(path: Path) -> tuple[str, str]:
+    """When the certificate expires (read with the ssl module's own decoder)."""
+    import ssl
+
+    try:
+        info = ssl._ssl._test_decode_cert(str(path))  # the stdlib's only certificate reader
+        left = (ssl.cert_time_to_seconds(info["notAfter"]) - time.time()) / 86400
+    except (OSError, ValueError, KeyError, AttributeError) as e:
+        return WARN, f"couldn't read the certificate {path}: {e}"
+    if left < 0:
+        return FAIL, f"the certificate {path} expired {int(-left)} day(s) ago"
+    if left < 14:
+        return WARN, f"the certificate {path} expires in {int(left)} day(s)"
+    return OK, f"certificate {path}, valid for {int(left)} more day(s)"
 
 
 def _port_check(port: int) -> tuple[str, str]:

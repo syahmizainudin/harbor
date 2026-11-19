@@ -382,8 +382,8 @@
       <div class="bar-head"><strong>Audit log</strong>
         <span class="actions"><span class="note">Sign-ins, account, role and library changes.</span> <button class="small" id="auditRefresh">Refresh</button></span></div>
       <table>
-        <thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Details</th></tr></thead>
-        <tbody id="admAudit"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        <thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Details</th><th>From</th></tr></thead>
+        <tbody id="admAudit"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
       </table>
       <div class="more" id="auditMore"></div>
       <div class="msg" id="admAuditMsg"></div>
@@ -901,8 +901,8 @@ async function loadAudit(more = false) {
     const r = await api(`/api/admin/audit?limit=100&offset=${more ? auditItems.length : 0}`);
     auditItems = more ? auditItems.concat(r.items) : r.items;
     $("admAudit").innerHTML = auditItems.map(a => `<tr><td class="note">${esc(new Date(a.at * 1000).toLocaleString())}</td>
-      <td>${esc(a.actor || "—")}</td><td>${esc(a.action)}</td><td>${esc(a.target)}</td><td class="note" title="${esc(a.detail)}">${esc(a.detail)}</td></tr>`).join("")
-      || `<tr><td colspan="5" class="empty">Nothing recorded yet.</td></tr>`;
+      <td>${esc(a.actor || "—")}</td><td>${esc(a.action)}</td><td>${esc(a.target)}</td><td class="note" title="${esc(a.detail)}">${esc(a.detail)}</td><td class="note mono">${esc(a.client || "")}</td></tr>`).join("")
+      || `<tr><td colspan="6" class="empty">Nothing recorded yet.</td></tr>`;
     $("auditMore").innerHTML = auditItems.length < r.total ? `<button class="small" id="auditMoreBtn">Show more (${r.total - auditItems.length} left)</button>` : "";
     say($("admAuditMsg"), "");
   } catch (e) { say($("admAuditMsg"), e.message, true); }

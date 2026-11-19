@@ -25,7 +25,7 @@ from .app import (
 from cbzshelf.library import Library
 
 from .accounts import Accounts, default_accounts_db
-from .config import ConfigError, load_settings
+from .config import ConfigError, check_reach, host_list, load_settings
 from .history import History, default_history_db
 from .perms import JobOwners
 from .state import QueueStore, default_state_file
@@ -226,6 +226,12 @@ def cmd_ui(args) -> int:
     except (ConfigError, OSError) as e:
         print(f"harbor: {e}", file=sys.stderr)
         return 2
+    problems = check_reach(settings)
+    if problems:
+        for problem in problems:
+            print(f"harbor: {problem}", file=sys.stderr)
+        print('harbor: not started; see README, "Reading from other devices".', file=sys.stderr)
+        return 2
 
     notes: list[str] = []  # restore notes, shown on the page
     try:
@@ -292,8 +298,8 @@ def cmd_ui(args) -> int:
             )
     try:
         server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts, owners, history)
-    except OSError as e:
-        print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
+    except (OSError, ValueError) as e:  # ssl.SSLError is an OSError: a bad certificate or key
+        print(f"harbor: cannot listen on {settings.host}:{settings.port}: {e}", file=sys.stderr)
         close_all(save=False)  # keep the saved jobs for the next start
         return 2
     if settings.library_scan and library.roots():
@@ -301,7 +307,10 @@ def cmd_ui(args) -> int:
     notes[:] = store.restore(settings.api_key) if settings.restore else []
     for note in notes:
         print(f"harbor: {note}", flush=True)
-    url = f"http://127.0.0.1:{settings.port}/"
+    url = f"http{'s' if settings.tls_cert else ''}://127.0.0.1:{settings.port}/"
+    if settings.host not in ("127.0.0.1", "localhost") or settings.trust_proxy:
+        names = ", ".join(host_list(settings))
+        print(f"harbor: reachable from other devices as {names} (listening on {settings.host})", flush=True)
     print(f"harbor console: {url}  (Ctrl+C to stop; running jobs are cancelled, originals kept)", flush=True)
     if settings.source:
         print(
