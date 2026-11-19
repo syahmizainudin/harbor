@@ -45,7 +45,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
   2. Release it there (tag `v<version>`).
   3. Bump the tag in this repo's `pyproject.toml`.
 - **The page is harbor's own.** It is the union of the two tools' pages: the Convert tab is `cbzwebp/ui.html`'s body and the Download tab is `dlqueue/ui.html`'s, plus the tabs and the "Convert downloads" option. When either tool's page changes, carry the change over here by hand.
-- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`) and `downloads`, `downloads_paused`, `download_workers` (from `DownloadAPI`). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
+- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
 
 ## The rules of the two tools still apply
 

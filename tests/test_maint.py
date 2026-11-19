@@ -131,6 +131,28 @@ class DoctorTests(Base):
         pins = maint._pins()
         self.assertEqual(set(pins), {"cbz-webp", "dl-queue", "cbz-shelf"})
 
+    def test_pins_from_installed_metadata(self):
+        reqs = [
+            "cbz-webp@ git+https://github.com/x/cbz-webp@v1.2.3",
+            "dl-queue @ git+https://x/dl-queue@v0.4.2",
+        ]
+        with (
+            mock.patch("importlib.metadata.requires", return_value=reqs),
+            mock.patch.object(Path, "is_file", return_value=False),
+        ):
+            self.assertEqual(maint._pins(), {"cbz-webp": "1.2.3", "dl-queue": "0.4.2"})
+
+    def test_odd_characters_in_a_database_path(self):
+        self.make_files()
+        odd = self.dir / "a?b#c%d"
+        odd.mkdir()
+        (self.dir / "library.db").rename(odd / "library.db")
+        self.settings.library_db = str(odd / "library.db")
+        text = "\n".join(f"{lvl} {m}" for lvl, m in maint.doctor(self.settings))
+        self.assertIn(f"ok library database {odd / 'library.db'}", text)
+        folder, _ = maint.backup(self.settings, self.dir / "bk")
+        self.assertTrue((folder / "library.db").is_file())
+
 
 class CliTests(Base):
     def run_cli(self, *argv):

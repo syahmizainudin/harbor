@@ -762,10 +762,17 @@ class AccountAPI:
             try:
                 user, sid = acc.login(name, str(body.get("password", "")), request_agent())
             except LockedOut as e:
-                acc.audit("sign-in refused", name[:80], "locked after repeated wrong passwords")
+                known = acc._row(name) is not None
+                acc.audit(
+                    "sign-in refused", name.strip()[:80] if known else "", "locked after repeated wrong tries"
+                )
                 return 429, {"error": str(e)}
             except ValueError as e:
-                acc.audit("sign-in failed", name[:80])
+                # Only a real account's name: text typed into the name field may be a password.
+                if acc._row(name) is not None:
+                    acc.audit("sign-in failed", name.strip()[:80])
+                else:
+                    acc.audit("sign-in failed", "", "unknown name")
                 return 401, {"error": str(e)}
             acc.audit("sign-in", user["name"], request_agent(), actor=user)
             return 200, {"name": user["name"]}, {"Set-Cookie": acc.cookie(sid)}

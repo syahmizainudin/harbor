@@ -448,6 +448,10 @@ class SessionsAndAuditTests(SignInBase):
         self.assertEqual(
             self.req("POST", "/api/account/login", {"name": "Bo", "password": "wrong one!"})[0], 401
         )
+        # a password typed into the name field: the answer is the same, and it isn't recorded
+        self.assertEqual(
+            self.req("POST", "/api/account/login", {"name": "hunter2 secret", "password": "x"})[0], 401
+        )
         sid = self.login_as()
         self.req("POST", "/api/admin/user-add", {"name": "Cy", "password": PW, "role_id": 3}, cookie=sid)
         status, _, tok = self.req("POST", "/api/account/token-create", {"label": "laptop"}, cookie=sid)
@@ -464,6 +468,7 @@ class SessionsAndAuditTests(SignInBase):
             got,
             [
                 ("", "sign-in failed", "Bo"),
+                ("", "sign-in failed", ""),
                 ("Ann", "sign-in", "Ann"),
                 ("Ann", "user added", "Cy"),
                 ("Ann", "token created", "Ann"),
@@ -473,7 +478,7 @@ class SessionsAndAuditTests(SignInBase):
             ],
         )
         everything = json.dumps(log)
-        for secret in (PW, "wrong one!", "new pass word", sid, tok["token"]):
+        for secret in (PW, "wrong one!", "new pass word", "hunter2", sid, tok["token"]):
             self.assertNotIn(secret, everything)
         bo = self.login_as("Bo")
         self.assertEqual(self.req("GET", "/api/admin/audit", cookie=bo)[0], 403)  # needs users.manage

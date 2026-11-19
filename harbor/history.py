@@ -166,7 +166,7 @@ class History:
 
     def close(self) -> None:
         self.enabled = False
-        self.flush()
+        self.flush(3)  # within pm2's kill_timeout, with the queues' own shutdown
         self._queue.put(None)
         self._thread.join(timeout=5)
         with self._lock:

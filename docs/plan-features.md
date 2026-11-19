@@ -76,7 +76,7 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
     - tokens created and revoked;
     - library folders and libraries added or removed.
 
-    It records who acted, on what, when, and the client address, never a password, session id or token. Admin tab section, `users.manage`. Same retention setting as history (`HARBOR_AUDIT_DAYS`, default 365).
+    It records who acted, on what and when, never a password, session id or token. A failed sign-in names the account only when it exists, since a password typed into the name field must not be recorded. (Built without the client address: it is 127.0.0.1 for everyone until LAN access, so phase 3 adds it.) Admin tab section, `users.manage`. Same retention setting as history (`HARBOR_AUDIT_DAYS`, default 365).
 
 ### Tool changes
 

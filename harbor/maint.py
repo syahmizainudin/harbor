@@ -63,7 +63,7 @@ def backup(settings: Settings, dest: Path | None = None, keep: int = 7) -> tuple
             continue
         target = folder / src.name
         if src.suffix == ".db":
-            with sqlite3.connect(f"file:{src}?mode=ro", uri=True) as s, sqlite3.connect(target) as t:
+            with _ro(src) as s, sqlite3.connect(target) as t:
                 s.backup(t)
             s.close()
             t.close()
@@ -102,17 +102,22 @@ def _pins() -> dict[str, str]:
         pass
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     if pyproject.is_file():  # a checkout: its own pins are the ones that count
-        reqs = re.findall(r'"([a-z-]+ @ git\+[^"]+)"', pyproject.read_text(encoding="utf-8"))
+        reqs = re.findall(r'"([a-z-]+\s*@\s*git\+[^"]+)"', pyproject.read_text(encoding="utf-8"))
     pins = {}
     for r in reqs:
-        m = re.match(r"([a-z-]+) @ git\+\S+@v([\w.]+)", r)
+        m = re.match(r"([a-z-]+)\s*@\s*git\+\S+@v([\w.]+)", r)
         if m:
             pins[m.group(1)] = m.group(2)
     return pins
 
 
+def _ro(path: Path) -> sqlite3.Connection:
+    """A read-only connection: never creates, writes or migrates the file."""
+    return sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+
+
 def _db_version(path: Path) -> int:
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as c:
+    with _ro(path) as c:
         v = c.execute("PRAGMA user_version").fetchone()[0]
     c.close()
     return v
@@ -153,9 +158,13 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
         add((FAIL, f"the installed dependencies lack {m}"))
 
     files = data_files(settings)
-    from cbzshelf import library as L
+    expected = {"accounts": len(A.MIGRATIONS)}
+    try:
+        from cbzshelf import library as L
 
-    expected = {"accounts": len(A.MIGRATIONS), "library": len(L.MIGRATIONS)}
+        expected["library"] = len(L.MIGRATIONS)
+    except ImportError:  # already reported above; the library's schema can't be compared
+        pass
     for label in ("accounts", "library", "history"):
         path = files[label]
         if label == "accounts" and not settings.accounts:
@@ -186,7 +195,7 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
     lib = files["library"]
     if lib.is_file():
         try:
-            with sqlite3.connect(f"file:{lib}?mode=ro", uri=True) as c:
+            with _ro(lib) as c:
                 roots = [r[0] for r in c.execute("SELECT path FROM roots ORDER BY path")]
             c.close()
             for r in roots:
@@ -201,7 +210,7 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
     acc = files["accounts"]
     if settings.accounts and acc.is_file():
         try:
-            with sqlite3.connect(f"file:{acc}?mode=ro", uri=True) as c:
+            with _ro(acc) as c:
                 admins = c.execute(
                     "SELECT count(*) FROM users WHERE disabled = 0 AND (is_admin = 1 OR role_id = 1)"
                 ).fetchone()[0]
