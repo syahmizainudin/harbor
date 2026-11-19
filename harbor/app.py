@@ -42,7 +42,7 @@ def missing_dependencies() -> list[str]:
     for param in ("can", "visible"):
         if param not in inspect.signature(LibraryAPI).parameters:
             missing.append(f"cbz-shelf LibraryAPI({param}=...)")
-    for name in ("give_user_data", "scan_file", "libraries"):
+    for name in ("give_user_data", "scan_file", "libraries", "book_file"):
         if not hasattr(Library, name):
             missing.append(f"cbz-shelf Library.{name}")
     return missing
