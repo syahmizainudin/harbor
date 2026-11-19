@@ -74,6 +74,10 @@ MIGRATIONS: list[str] = [
     # 2: each user's own Convert and Download defaults (never the API key).
     """CREATE TABLE prefs (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                           prefs_json TEXT NOT NULL DEFAULT '{}')""",
+    # 3: who may see each library (cbz-shelf's library ids). No row: every role with library.read,
+    # and guests. roles_json NULL is every role too; a list names the only roles (Admin always sees all).
+    """CREATE TABLE library_access (
+           library_id INTEGER PRIMARY KEY, roles_json TEXT, guests INTEGER NOT NULL DEFAULT 1)""",
 ]
 ADMIN_ROLE, MEMBER_ROLE = 1, 2
 
@@ -200,6 +204,7 @@ class Accounts:
         except OSError:
             pass
         self._failures: dict[str, list[float]] = {}
+        self._rules: dict[int, dict] | None = None  # library_access, read once, dropped on change
 
     def close(self) -> None:
         with self._lock:
@@ -368,7 +373,69 @@ class Accounts:
             raise ValueError("the Admin role can't be removed")
         if r["members"]:
             raise ValueError(f"{r['name']} still has {r['members']} member(s); give them another role first")
-        self._x("DELETE FROM roles WHERE id = ?", (r["id"],))
+        with self._lock:
+            self._db.execute("BEGIN")
+            self._db.execute("DELETE FROM roles WHERE id = ?", (r["id"],))
+            for lid, rule in self.library_rules().items():  # a removed role sees nothing anyway
+                if rule["roles"] is not None and r["id"] in rule["roles"]:
+                    roles = [x for x in rule["roles"] if x != r["id"]]
+                    self._db.execute(
+                        "UPDATE library_access SET roles_json = ? WHERE library_id = ?",
+                        (json.dumps(roles), lid),
+                    )
+            self._db.execute("COMMIT")
+            self._rules = None
+
+    # ------------------------------------------------------------ library access
+    def library_rules(self) -> dict[int, dict]:
+        """Library id -> ``{"roles": None or [role ids], "guests": bool}``, for libraries that
+        aren't open to everyone. Kept in memory: it's read on every library request."""
+        with self._lock:
+            if self._rules is None:
+                self._rules = {
+                    r["library_id"]: {
+                        "roles": None if r["roles_json"] is None else json.loads(r["roles_json"]),
+                        "guests": bool(r["guests"]),
+                    }
+                    for r in self._db.execute("SELECT * FROM library_access").fetchall()
+                }
+            return self._rules
+
+    def set_library_access(self, library_id: int, roles: list | None, guests: bool) -> dict:
+        """Who may see a library: ``roles`` None for every role with library.read, or a list of
+        role ids (Admin always sees it); ``guests`` whether signed-out visitors may."""
+        if not isinstance(guests, bool):
+            raise ValueError("guests must be true or false")
+        if roles is not None:
+            if not isinstance(roles, list) or any(
+                isinstance(x, bool) or not isinstance(x, int) for x in roles
+            ):
+                raise ValueError("roles must be null (everyone) or a list of role ids")
+            known = {r["id"] for r in self.roles()}
+            if set(roles) - known:
+                raise KeyError(f"no role {sorted(set(roles) - known)[0]}")
+            roles = sorted(set(roles) - {ADMIN_ROLE})
+        with self._lock:
+            if roles is None and guests:
+                self._db.execute("DELETE FROM library_access WHERE library_id = ?", (int(library_id),))
+            else:
+                self._db.execute(
+                    """INSERT INTO library_access(library_id, roles_json, guests) VALUES (?, ?, ?)
+                       ON CONFLICT(library_id) DO UPDATE
+                       SET roles_json = excluded.roles_json, guests = excluded.guests""",
+                    (int(library_id), None if roles is None else json.dumps(roles), int(guests)),
+                )
+            self._rules = None
+        return {"id": int(library_id), "roles": roles, "guests": guests}
+
+    def forget_libraries(self, keep: set[int]) -> None:
+        """Drop the rules of libraries that no longer exist."""
+        with self._lock:
+            gone = [lid for lid in self.library_rules() if lid not in keep]
+            for lid in gone:
+                self._db.execute("DELETE FROM library_access WHERE library_id = ?", (lid,))
+            if gone:
+                self._rules = None
 
     def set_password(self, name: str, password: str, keep_session: str | None = None) -> None:
         """Change a password and end the user's other sessions (all of them unless ``keep_session``)."""

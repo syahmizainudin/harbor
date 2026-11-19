@@ -335,6 +335,11 @@
       </form>
       <div class="msg" id="admRolesMsg"></div>
     </section>
+    <section class="panel" id="admLibsBox" hidden>
+      <div class="bar-head"><strong>Library access</strong><span class="note">Who can see each library. Admin always sees all of them. Libraries are added in the Library tab, under Folders → Libraries…</span></div>
+      <div style="overflow-x:auto"><table class="matrix" id="admLibs"></table></div>
+      <div class="msg" id="admLibsMsg"></div>
+    </section>
     <section class="panel" id="admSeriesBox" hidden>
       <div class="bar-head"><strong>Series</strong>
         <input type="text" id="asFilter" placeholder="Filter series…" aria-label="Filter series" style="max-width:260px"></div>
@@ -814,10 +819,40 @@ function renderAdmin(st) {
     $("admAddRole").hidden = !editable;
   }
   window._admRoles = roles;
+  renderAdminLibraries(st.admin_libraries, roles);
 }
+let admLibs = "";
+function renderAdminLibraries(libs, roles) {
+  $("admLibsBox").hidden = !libs;
+  if (!libs) return;
+  const key = JSON.stringify([libs, roles, perms]);
+  if (key === admLibs || $("admLibs").contains(document.activeElement)) return;
+  admLibs = key;
+  const others = roles.filter(r => !r.locked);
+  const box = (lib, what, on, label, off) =>
+    `<td><input type="checkbox" data-lib="${lib.id}" data-what="${what}" aria-label="${esc(lib.name)}: ${esc(label)}"${on ? " checked" : ""}${off ? " disabled" : ""}></td>`;
+  $("admLibs").innerHTML = `<thead><tr><th>Library</th><th><span class="rname">Every role</span><span class="note">with Read the library</span></th>
+      ${others.map(r => `<th><span class="rname">${esc(r.name)}</span></th>`).join("")}<th><span class="rname">Guests</span><span class="note">signed out</span></th></tr></thead>
+    <tbody>${libs.map(l => `<tr><td>${esc(l.name)}</td>${box(l, "all", l.roles === null, "every role")}
+      ${others.map(r => box(l, r.id, l.roles === null || l.roles.includes(r.id), r.name, l.roles === null || !r.perms.every(has))).join("")}
+      ${box(l, "guests", l.guests, "guests")}</tr>`).join("") || `<tr><td class="empty">No libraries.</td></tr>`}</tbody>`;
+  window._admLibs = libs;
+}
+$("admLibs").onchange = async e => {
+  const c = e.target.closest("[data-lib]");
+  if (!c) return;
+  const lib = (window._admLibs || []).find(l => l.id === +c.dataset.lib);
+  let roles = lib.roles, guests = lib.guests;
+  if (c.dataset.what === "guests") guests = c.checked;
+  else if (c.dataset.what === "all") roles = c.checked ? null : (window._admRoles || []).filter(r => !r.locked).map(r => r.id);
+  else { const s = new Set(roles || []); if (c.checked) s.add(+c.dataset.what); else s.delete(+c.dataset.what); roles = [...s]; }
+  say($("admLibsMsg"), "");
+  await admin("library-access", { id: lib.id, roles, guests }, $("admLibsMsg")).catch(() => {});
+  c.blur();
+};
 async function admin(action, body, msgEl) {
   try { const r = await api("/api/admin/" + action, body); refresh(); return r; }
-  catch (e) { say(msgEl, e.message, true); admUsers = admRoles = ""; refresh(); throw e; }
+  catch (e) { say(msgEl, e.message, true); admUsers = admRoles = admLibs = ""; refresh(); throw e; }
 }
 $("admUsers").onchange = async e => {
   const s = e.target.closest("[data-user-role]");

@@ -4,6 +4,11 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+Needs cbz-shelf 0.5.0 (not yet tagged; the pin is bumped when it is).
+
+- **Libraries as tabs** (cbz-shelf 0.5.0): in the Library tab, **Folders → Libraries…** splits the library into named libraries, each holding one or more folders, shown as tabs next to **All**. Existing folders stay in one library called "Library".
+- **Library access:** a new section in the Admin tab says which roles, and whether signed-out visitors, can see each library. Admin always sees all. Hidden books are left out of every list, search, count and Continue reading, and answer 404 by id, through cbz-shelf's `LibraryAPI(visible=)`. Non-admins who manage roles can change only libraries they can see, and only for roles within their own permissions. Accounts migration 3 adds the `library_access` table; with no rules every library is open, as before.
+
 ## 0.1.2
 
 Pins cbz-webp 0.4.2, dl-queue 0.4.2 and cbz-shelf 0.4.3 (unchanged).

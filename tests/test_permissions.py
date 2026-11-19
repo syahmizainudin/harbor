@@ -20,7 +20,9 @@ from harbor.state import QueueStore
 PW = "correct horse"
 
 
-class PermissionHttpTests(unittest.TestCase):
+class HttpBase(unittest.TestCase):
+    """A harbor with three accounts (Ann admin, Mo member, Rea reader) and a one-book library."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
@@ -77,6 +79,8 @@ class PermissionHttpTests(unittest.TestCase):
         make_zip(p, comic_entries())
         return str(p)
 
+
+class PermissionHttpTests(HttpBase):
     def test_reader_can_only_read_the_library(self):
         self.assertEqual(self.req("Rea", "GET", "/api/dirs")[0], 403)
         self.assertEqual(self.req("Rea", "POST", "/api/add", {"paths": [self.zip_("r.zip")]})[0], 403)
@@ -216,6 +220,119 @@ class PermissionHttpTests(unittest.TestCase):
         )
         self.assertEqual(hd("user-disable", {"id": self.acc.get("Mo")["id"]})[0], 403)  # Mo has more than Hd
         self.assertEqual(hd("role-add", {"name": "X", "perms": []})[0], 403)  # no roles.manage
+
+
+class LibraryAccessTests(HttpBase):
+    """Who sees which library: the Admin tab's matrix, enforced through cbz-shelf's ``visible``."""
+
+    def setUp(self):
+        super().setUp()
+        (self.dir / "Private" / "P").mkdir(parents=True)
+        make_zip(self.dir / "Private" / "P" / "p.cbz", comic_entries())
+        self.priv = self.lib.add_library("Private")["id"]
+        self.lib.add_root(str(self.dir / "Private"), self.priv)
+        self.lib.wait_scan(30)
+        self.pbook = self.lib.search(q="p")["items"][0]
+
+    def guest(self, path):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        conn.close()
+        return resp.status, body
+
+    def series_names(self, who):
+        _, body = (
+            self.guest("/api/library/series") if who is None else self.req(who, "GET", "/api/library/series")
+        )
+        return sorted(x["name"] for x in body["items"])
+
+    def test_open_to_everyone_by_default(self):
+        for who in ("Ann", "Mo", "Rea", None):
+            self.assertEqual(self.series_names(who), ["P", "S"], who)
+        st = self.req("Ann", "GET", "/api/state")[1]
+        self.assertEqual(
+            st["admin_libraries"],
+            [
+                {"id": 1, "name": "Library", "roles": None, "guests": True},
+                {"id": self.priv, "name": "Private", "roles": None, "guests": True},
+            ],
+        )
+
+    def test_restricted_library_is_hidden_and_refused(self):
+        body = {"id": self.priv, "roles": [2], "guests": False}  # Members only
+        self.assertEqual(self.req("Ann", "POST", "/api/admin/library-access", body)[1]["roles"], [2])
+        self.assertEqual(self.series_names("Ann"), ["P", "S"])  # Admin always
+        self.assertEqual(self.series_names("Mo"), ["P", "S"])
+        self.assertEqual(self.series_names("Rea"), ["S"])
+        self.assertEqual(self.series_names(None), ["S"])
+        bid = self.pbook["id"]
+        for path in (
+            f"/api/library/book?id={bid}",
+            f"/api/library/page?book={bid}&n=0",
+            f"/api/library/thumb?book={bid}",
+        ):
+            self.assertEqual(self.req("Rea", "GET", path)[0], 404, path)
+            self.assertEqual(self.guest(path)[0], 404, path)
+        self.assertEqual(self.req("Rea", "POST", "/api/library/progress", {"id": bid, "page": 1})[0], 404)
+        st = self.req("Rea", "GET", "/api/state")[1]
+        self.assertEqual([x["name"] for x in st["library_list"]], ["Library"])
+        self.assertEqual(self.guest("/api/state")[1]["library"]["books"], 1)
+        self.assertEqual(self.req("Mo", "GET", f"/api/library/book?id={bid}")[0], 200)
+        # guests back on, roles still Members only
+        self.req("Ann", "POST", "/api/admin/library-access", {**body, "guests": True})
+        self.assertEqual(self.series_names(None), ["P", "S"])
+        self.assertEqual(self.series_names("Rea"), ["S"])
+        # removing a role takes it off every library's list
+        _, role = self.req("Ann", "POST", "/api/admin/role-add", {"name": "Tmp", "perms": ["library.read"]})
+        self.req(
+            "Ann",
+            "POST",
+            "/api/admin/library-access",
+            {"id": self.priv, "roles": [2, role["id"]], "guests": True},
+        )
+        self.req("Ann", "POST", "/api/admin/role-remove", {"id": role["id"]})
+        self.assertEqual(self.acc.library_rules()[self.priv]["roles"], [2])
+        # back to everyone: the rule row goes
+        self.req("Ann", "POST", "/api/admin/library-access", {"id": self.priv, "roles": None, "guests": True})
+        self.assertEqual(self.acc.library_rules(), {})
+
+    def test_bad_library_access_requests(self):
+        post = lambda body: self.req("Ann", "POST", "/api/admin/library-access", body)  # noqa: E731
+        self.assertEqual(post({"id": 999, "roles": None, "guests": True})[0], 404)
+        self.assertEqual(post({"id": self.priv, "roles": [77], "guests": True})[0], 404)
+        self.assertEqual(post({"id": self.priv, "roles": "2", "guests": True})[0], 400)
+        self.assertEqual(post({"id": self.priv, "roles": None, "guests": "no"})[0], 400)
+        self.assertEqual(
+            self.req("Mo", "POST", "/api/admin/library-access", {"id": self.priv, "roles": []})[0], 403
+        )
+
+    def test_non_admin_role_manager_stays_within_their_own(self):
+        _, role = self.req(
+            "Ann",
+            "POST",
+            "/api/admin/role-add",
+            {"name": "Keeper", "perms": ["roles.manage", "library.read"]},
+        )
+        self.req("Ann", "POST", "/api/admin/user-add", {"name": "Kee", "password": PW, "role_id": role["id"]})
+        kee = lambda body: self.req("Kee", "POST", "/api/admin/library-access", body)  # noqa: E731
+        # Members have permissions Kee lacks: taking the library from them is refused
+        self.assertEqual(kee({"id": self.priv, "roles": [3, role["id"]], "guests": True})[0], 403)
+        # Readers and Keepers are within Kee's permissions; Members keep their access
+        self.req(
+            "Ann",
+            "POST",
+            "/api/admin/library-access",
+            {"id": self.priv, "roles": [2, 3, role["id"]], "guests": True},
+        )
+        self.assertEqual(kee({"id": self.priv, "roles": [2, role["id"]], "guests": False})[0], 200)
+        self.assertEqual(self.series_names("Rea"), ["S"])
+        # a library Kee can't see doesn't exist for Kee
+        self.req("Ann", "POST", "/api/admin/library-access", {"id": self.priv, "roles": [2], "guests": False})
+        self.assertEqual(kee({"id": self.priv, "roles": None, "guests": True})[0], 404)
+        names = [x["name"] for x in self.req("Kee", "GET", "/api/state")[1]["admin_libraries"]]
+        self.assertEqual(names, ["Library"])
 
 
 class OwnershipUnitTests(unittest.TestCase):

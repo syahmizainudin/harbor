@@ -154,6 +154,28 @@ class AccountsTests(unittest.TestCase):
         self.assertEqual(A.session_id({"Cookie": "bad\x00cookie"}), "")
 
 
+
+class MigrationTests(unittest.TestCase):
+    def test_older_database_is_upgraded_and_keeps_its_accounts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "h.db"
+            saved, A.MIGRATIONS = A.MIGRATIONS, A.MIGRATIONS[:2]  # a 0.1.2 database
+            try:
+                acc = A.Accounts(db)
+                acc.add("Ann", "correct horse", admin=True)
+                acc.set_prefs(acc.get("Ann")["id"], {"quality": 70})
+                acc.close()
+            finally:
+                A.MIGRATIONS = saved
+            self.assertEqual(sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0], 2)
+            acc = A.Accounts(db)
+            self.addCleanup(acc.close)
+            self.assertEqual(acc._q("PRAGMA user_version")[0][0], len(A.MIGRATIONS))
+            ann = acc.login("Ann", "correct horse")[0]
+            self.assertEqual((ann["admin"], acc.prefs(ann["id"])), (True, {"quality": 70}))
+            self.assertEqual(acc.library_rules(), {})  # every library open, as before
+
+
 class SignInHttpTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -7,22 +7,37 @@ can only:
   * put permissions they have into a role, and edit only roles within their own permissions.
 So managing users never leads to becoming an admin. The locked Admin role, and the rule that the
 last enabled admin stays, are enforced in ``Accounts``.
+
+Library access (``roles.manage``): who may see each library. A non-admin changes it only for
+libraries they can see, and only for roles within their own permissions.
 """
 
 from __future__ import annotations
 
 from cbzwebp.web import current_user
 
-from .accounts import PERMISSIONS, Accounts, clean_perms
+from .accounts import ADMIN_ROLE, PERMISSIONS, Accounts, clean_perms
 
 DENIED = {"error": "you don't have permission for this"}
 USER_ACTIONS = {"user-add", "user-role", "user-disable", "user-password", "user-remove"}
-ROLE_ACTIONS = {"role-add", "role-update", "role-remove"}
+ROLE_ACTIONS = {"role-add", "role-update", "role-remove", "library-access"}
 
 
 class AdminAPI:
-    def __init__(self, accounts: Accounts):
+    def __init__(self, accounts: Accounts, library=None):
         self.accounts = accounts
+        self.library = library
+
+    def _libraries(self, me) -> list[dict]:
+        """The libraries ``me`` can see, each with its access rule."""
+        from .perms import hidden_libraries
+
+        if self.library is None:
+            return []
+        rules, libs = self.accounts.library_rules(), self.library.libraries(counts=False)
+        hidden = hidden_libraries(rules, me)
+        open_rule = {"roles": None, "guests": True}
+        return [{**x, **rules.get(x["id"], open_rule)} for x in libs if x["id"] not in hidden]
 
     def state(self) -> dict:
         me = current_user()
@@ -37,6 +52,8 @@ class AdminAPI:
         if perms & {"users.manage", "roles.manage"}:
             out["admin_roles"] = self.accounts.roles()
             out["permissions"] = [{"key": k, "label": label} for k, label in PERMISSIONS]
+        if "roles.manage" in perms and self.library is not None:
+            out["admin_libraries"] = self._libraries(me)
         return out
 
     def post(self, action: str, body: dict):
@@ -107,6 +124,25 @@ class AdminAPI:
                 if perms is not None and not within(perms):
                     raise PermissionError("you can't give permissions you don't have")
                 return 200, acc.update_role(role["id"], body.get("name"), perms)
+            if action == "library-access":
+                lid, roles, guests = int(body["id"]), body.get("roles"), body.get("guests", True)
+                if self.library is None:
+                    return 404, {"error": "there is no library"}
+                current = next((x for x in self._libraries(me) if x["id"] == lid), None)
+                if current is None:
+                    raise KeyError(f"no library {lid}")
+                if not me["admin"]:
+                    every = {r["id"] for r in acc.roles()} - {ADMIN_ROLE}  # Admin always sees all
+
+                    def seen(x):
+                        return every if x is None else set(x) - {ADMIN_ROLE}
+
+                    for rid in seen(current["roles"]) ^ seen(roles if isinstance(roles, list) else None):
+                        if rid in every and not within(acc.role(rid)["perms"]):
+                            raise PermissionError("that changes a role with permissions you don't have")
+                result = acc.set_library_access(lid, roles, guests)
+                acc.forget_libraries({x["id"] for x in self.library.libraries(counts=False)})
+                return 200, result
             if action == "role-remove":
                 role = acc.role(int(body["id"]))
                 if not role["locked"] and not within(role["perms"]):

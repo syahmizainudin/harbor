@@ -58,6 +58,30 @@ def guest_may(method: str, path: str) -> bool:
     return method == "POST" and action in GUEST_LIBRARY_POSTS
 
 
+def hidden_libraries(rules: dict, user) -> set[int]:
+    """The library ids ``user`` (None: a guest) may not see, from ``Accounts.library_rules()``."""
+    if user is None:
+        return {lid for lid, r in rules.items() if not r["guests"]}
+    if user.get("admin"):
+        return set()
+    return {
+        lid for lid, r in rules.items() if r["roles"] is not None and user.get("role_id") not in r["roles"]
+    }
+
+
+def make_visible(accounts, library):
+    """cbz-shelf's ``visible`` hook: the libraries the request's user (or a guest) may see, or None
+    when nothing is hidden from them."""
+
+    def visible():
+        hidden = hidden_libraries(accounts.library_rules(), current_user())
+        if not hidden:
+            return None
+        return {x["id"] for x in library.libraries(counts=False)} - hidden
+
+    return visible
+
+
 class GuestSafeLibraryAPI:
     """cbz-shelf's LibraryAPI with accounts on: a guest's reading progress, reader settings and
     Continue-reading changes are answered but not saved (no shared guest data)."""

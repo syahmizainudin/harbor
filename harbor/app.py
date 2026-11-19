@@ -37,9 +37,10 @@ def missing_dependencies() -> list[str]:
     missing = []
     if "auth" not in inspect.signature(serve).parameters:
         missing.append("cbz-webp serve(auth=...)")
-    if "can" not in inspect.signature(LibraryAPI).parameters:
-        missing.append("cbz-shelf LibraryAPI(can=...)")
-    for name in ("give_user_data", "scan_file"):
+    for param in ("can", "visible"):
+        if param not in inspect.signature(LibraryAPI).parameters:
+            missing.append(f"cbz-shelf LibraryAPI({param}=...)")
+    for name in ("give_user_data", "scan_file", "libraries"):
         if not hasattr(Library, name):
             missing.append(f"cbz-shelf Library.{name}")
     return missing
@@ -224,7 +225,7 @@ def serve_harbor(
     (``/api/account/``); signed out, the page and the library can be read (``perms.guest_may``)."""
     from .accounts import AccountAPI, HarborSignIn
     from .admin import AdminAPI
-    from .perms import GuardedQueueAPI, GuestSafeLibraryAPI, JobOwners, can, guest_can
+    from .perms import GuardedQueueAPI, GuestSafeLibraryAPI, JobOwners, can, guest_can, make_visible
 
     settings = settings or Settings()
     owners = owners if owners is not None else JobOwners()
@@ -244,13 +245,14 @@ def serve_harbor(
     }
     pages = {}
     if library is not None:
-        library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can)
+        visible = make_visible(accounts, library) if accounts is not None else None
+        library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can, visible=visible)
         apis["/api/library/"] = GuestSafeLibraryAPI(library_api) if guests else library_api
         pages["/library"] = LIBRARY_HTML
     auth = None
     if accounts is not None:
         apis["/api/account/"] = AccountAPI(accounts)
-        apis["/api/admin/"] = AdminAPI(accounts)
+        apis["/api/admin/"] = AdminAPI(accounts, library)
         pages["/login"] = LOGIN_HTML
         auth = HarborSignIn(accounts)
     return serve(port, UI_HTML, apis, ARCHIVE_EXTS, settings.allowed_origins(), pages, auth=auth)
