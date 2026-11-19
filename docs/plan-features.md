@@ -45,7 +45,7 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
     - `HARBOR_TRUST_PROXY` (`true`/`false`).
 13. **Harbor refuses to start** on any address other than loopback unless TLS is configured (or `HARBOR_TRUST_PROXY` is on with a loopback bind), `HARBOR_SECURE_COOKIE` is on, accounts are on, and `HARBOR_ALLOWED_HOSTS` is set. The message names what's missing. This is plan-users decision 3.
 14. **WSL**: the README gets a section on making WSL reachable from the LAN (mirrored networking in `.wslconfig`, or a `netsh interface portproxy` rule and a Windows firewall rule), and on getting a certificate (mkcert, or `tailscale cert`).
-15. The page doesn't change. The Chrome extension stays on `http://localhost`, so it keeps working with a reverse proxy (harbor stays on plain HTTP on 127.0.0.1) but not when harbor serves HTTPS itself. **Open:** an extension that works with harbor's own HTTPS (a second, local plain-HTTP listener, or `https://localhost` permissions and a trusted certificate).
+15. The page doesn't change. The Chrome extension stays on `http://localhost`, so it keeps working with a reverse proxy (harbor stays on plain HTTP on 127.0.0.1) but not when harbor serves HTTPS itself. **Done after 0.2.0:** `HARBOR_LOCAL_PORT` gives the extension a second, plain-HTTP listener on 127.0.0.1 when harbor serves HTTPS itself.
 
 ### OPDS
 

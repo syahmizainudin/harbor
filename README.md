@@ -102,6 +102,7 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_ALLOWED_HOSTS` | | Names or addresses other devices use to reach harbor, comma-separated |
 | | `HARBOR_TLS_CERT`, `HARBOR_TLS_KEY` | | HTTPS certificate and key (PEM). The key must be readable only by you |
 | | `HARBOR_TRUST_PROXY` | `false` | A reverse proxy on this computer serves harbor over HTTPS |
+| | `HARBOR_LOCAL_PORT` | | With harbor's own HTTPS: a plain-HTTP port on 127.0.0.1 for the Chrome extension |
 | | `HARBOR_DOWNLOAD_RATE` | no limit | Speed limit for all downloads together, such as `5M` or `500K` |
 | | `HARBOR_DOWNLOAD_HOURS` | always | Start downloads only between these local times, such as `01:00-07:00` |
 | | `HARBOR_WATCH_DIRS` | | Folders whose new archives are converted on their own, separated by `;` |
@@ -184,9 +185,10 @@ HARBOR_ALLOWED_HOSTS=my-pc.tail1234.ts.net,192.168.1.20
 HARBOR_TLS_CERT=~/.config/harbor/cert.pem
 HARBOR_TLS_KEY=~/.config/harbor/key.pem
 HARBOR_SECURE_COOKIE=true
+HARBOR_LOCAL_PORT=8766          # for the Chrome extension
 ```
 
-With this option the Chrome extension stops working, because it only talks to `http://localhost` and harbor no longer answers plain HTTP. Option 2 keeps the extension working, since harbor itself stays on `http://127.0.0.1`.
+The Chrome extension only talks to `http://localhost` and `http://127.0.0.1`, so give it a local port too: with `HARBOR_LOCAL_PORT=8766`, harbor also answers plain HTTP on `127.0.0.1:8766`, for this computer only. Set the extension's Harbor address to `http://127.0.0.1:8766`. This computer's browser can use that address as well (it signs in separately from the HTTPS address).
 
 A certificate your devices trust without warnings is easiest to get with [Tailscale](https://tailscale.com/kb/1153/enabling-https): `tailscale cert my-pc.tail1234.ts.net` writes one for your machine's Tailscale name, and it works from any device on your tailnet. [mkcert](https://github.com/FiloSottile/mkcert) works on a home network too, but then every phone needs mkcert's root certificate installed. Keep the key private: `chmod 600 key.pem`.
 
