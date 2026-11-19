@@ -44,7 +44,7 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
 `harbor user add` takes `--role NAME` (default Member). The last admin who can sign in can't be disabled, removed or given another role. Each user has their own reading progress, Continue reading, favourites and reader settings in the Library tab. Book and series details are shared. Reading progress from before accounts existed goes to the first admin when harbor starts.
 
 - **Signing in:** a signed-out visit shows the Library tab and a **Sign in** button. A session lasts `HARBOR_SESSION_DAYS` (30) days after it was last used. After 5 wrong passwords for a name, that name is locked for 15 minutes.
-- **Your account** (bottom of the sidebar): change your password, which signs out your other browsers, make tokens for the Chrome extension, and sign out.
+- **Your account** (bottom of the sidebar): change your password, which signs out your other browsers, see every browser signed in to your account and sign any of them out, make tokens for the Chrome extension, and sign out.
 - **Roles:** every account has one. Admin has every permission and can't be changed. Member (convert, download, delete originals, read the library) and Reader (read the library) come built in, and admins can add more. Tabs and buttons you can't use are hidden, and harbor refuses them anyway.
 
   | Permission | Lets you |
@@ -61,7 +61,7 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
 
   The folder browser needs `convert`, `download` or `library.manage`. Someone who manages users or roles but isn't an admin can only hand out permissions they have themselves, so they can't make anyone (or themselves) an admin.
 - **Your defaults:** the Convert and Download fields (quality, effort, deleting originals, download folder, how the API key is sent, converting downloads) are saved with your account as you change them, so they follow you to any browser and the Chrome extension uses them. **Account → Go back to harbor's defaults** returns to the `.env` values. The text reader's size, width and colours are saved with your account too. The API key itself is never saved per user.
-- **Admin tab:** Users (add, change role, reset password, disable, remove), the roles × permissions matrix, Library access, and Series (rename and edit the shared details of any series).
+- **Admin tab:** Users (add, change role, reset password, disable, remove), the roles × permissions matrix, Library access, the Audit log, and Series (rename and edit the shared details of any series).
 - **Libraries and who sees them:** in the Library tab, **Folders → Libraries…** splits the library into named libraries (Manga, Novels…), each with one or more folders. They show as tabs above the filters, next to **All**. By default everyone who can read the library sees every library, signed-out visitors included. In **Admin → Library access**, untick **Every role** to pick the roles that see a library, and untick **Guests** to hide it from signed-out visitors. Admin always sees everything. Hidden books don't appear anywhere: not in lists, search, counts or Continue reading, and opening one by its address answers "not found". Someone who manages roles but isn't an admin can only change libraries they can see, and only for roles within their own permissions.
 - **What's stored:** passwords as salted scrypt hashes, and only hashes of session ids and tokens, in `HARBOR_ACCOUNTS_DB` (`~/.local/share/harbor/harbor.db`, readable only by you).
 - **What it protects:** harbor still listens only on `127.0.0.1`. Accounts keep people who share this computer's browser apart. They don't protect against someone who can read your files in WSL.
@@ -95,6 +95,9 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_ACCOUNTS_DB` | `~/.local/share/harbor/harbor.db` | Accounts, sessions and extension tokens |
 | | `HARBOR_SESSION_DAYS` | 30 | How long a sign-in lasts after it was last used |
 | | `HARBOR_SECURE_COOKIE` | `false` | Mark the session cookie `Secure`. Only when harbor is served over HTTPS |
+| | `HARBOR_HISTORY_DB` | `~/.local/share/harbor/history.db` | Finished conversions and downloads (the History panels) |
+| | `HARBOR_HISTORY_DAYS` | 90 | Days finished jobs are kept in the history. 0 keeps them forever |
+| | `HARBOR_AUDIT_DAYS` | 365 | Days audit log events are kept. 0 keeps them forever |
 | `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
@@ -105,6 +108,26 @@ Harbor saves the queued and running jobs of both tabs within a second of a chang
 - A running job starts over.
 - Finished and cancelled jobs aren't kept.
 - **The API key is never saved.** A download that needs a key comes back only if harbor has `HARBOR_API_KEY`. Otherwise, the note asks you to add it again.
+
+### History
+
+Each finished conversion and download is recorded in `HARBOR_HISTORY_DB`, with its file, result, sizes and time. The **History** panel under each queue shows your own (with **Everyone's** if you have `jobs.see_all`), and stays after **Clear finished** and restarts. The Convert tab shows the space saved in total and in the last 30 days. Records older than `HARBOR_HISTORY_DAYS` are deleted.
+
+### Audit log
+
+**Admin → Audit log** (`users.manage`) lists sign-ins and failed sign-ins, password changes and resets, users and roles added, changed or removed, library access changes, extension tokens, and library folders and libraries added, moved or removed. Each entry names who did it (or "command line" for `harbor user`) and when. Passwords, session ids and tokens are never recorded. Entries older than `HARBOR_AUDIT_DAYS` are deleted.
+
+### Back up and check
+
+```bash
+harbor backup                  # copies the databases and saved jobs to ~/.local/share/harbor/backups/<time>/
+harbor backup --to /mnt/d/harbor-backups --keep 14
+harbor doctor                  # checks settings, dependencies, databases, library folders and the port
+```
+
+`harbor backup` is safe while harbor runs: it copies each database with SQLite's backup API, and leaves the originals alone. It keeps the newest `--keep` (7) backups in that folder and deletes older ones, and only its own timestamped folders. To restore, stop harbor (`pm2 stop harbor`), copy the files from a backup folder back to where they were, and start it again.
+
+`harbor doctor` changes nothing. It opens the databases read-only, so it never upgrades them, and exits with 1 if it finds a problem. Warnings, such as a `.env` other users can read, don't count as problems. Both commands take `--env-file`.
 
 ### Keep it running in the background
 
@@ -149,6 +172,8 @@ The tabs are in a sidebar on the left; **« Collapse** shrinks it to icons. Whil
 1. Paste file URLs and choose a folder to save to.
 2. Choose how the API key is sent: Bearer, a named header, a named query parameter, or none.
 3. Leave **Convert .zip / .cbz downloads** ticked to send each downloaded archive to the Convert queue, with the Convert tab's quality and delete settings. Each download then shows its convert job's progress. A file that isn't converted (an `.epub`, or with this unticked) that lands in a library folder joins the library right away.
+
+If the library already has a book with the same file name as a URL (ignoring `.zip`, `.cbz` and `.epub`), the message after **Add to queue** names it. The download is queued anyway. Only libraries you can see are checked, and a URL whose file name the server picks later (such as `/download?id=3`) can't be checked.
 
 The key is never shown in the queue or sent on redirects. See [dl-queue's README](https://github.com/syahmizainudin/dl-queue#how-downloads-are-handled) for how files are named and saved.
 

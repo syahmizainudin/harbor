@@ -6,6 +6,12 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 Pins cbz-shelf 0.5.0.
 
+- **History:** every finished conversion and download is kept in `history.db` (`HARBOR_HISTORY_DB`, `HARBOR_HISTORY_DAYS`, default 90 days), and a **History** panel under each queue shows yours, or everyone's with `jobs.see_all`. The Convert tab shows the space saved in total and in the last 30 days.
+- **Where you're signed in:** Your account lists the browsers signed in to your account (with when they signed in and were last used), and signs any of them out. Accounts migration 4 records each session's browser.
+- **Audit log** in the Admin tab (`users.manage`): sign-ins and failed sign-ins, password changes, users, roles, library access, tokens, and library folders and libraries. Never passwords or tokens. `HARBOR_AUDIT_DAYS` (default 365).
+- **`harbor backup`** copies the databases and saved jobs to a timestamped folder, safely while harbor runs, keeping the newest 7. **`harbor doctor`** checks settings, file permissions, dependency versions, databases, library folders and the port, without changing anything.
+- **Already in the library:** adding downloads whose file name matches a book you can see in the library says so. The downloads are still queued.
+
 - **Libraries as tabs** (cbz-shelf 0.5.0): in the Library tab, **Folders → Libraries…** splits the library into named libraries, each holding one or more folders, shown as tabs next to **All**. Existing folders stay in one library called "Library".
 - **Library access:** a new section in the Admin tab says which roles, and whether signed-out visitors, can see each library. Admin always sees all. Hidden books are left out of every list, search, count and Continue reading, and answer 404 by id, through cbz-shelf's `LibraryAPI(visible=)`. Non-admins who manage roles can change only libraries they can see, and only for roles within their own permissions. Accounts migration 3 adds the `library_access` table; with no rules every library is open, as before.
 

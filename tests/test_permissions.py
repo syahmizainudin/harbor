@@ -308,6 +308,25 @@ class LibraryAccessTests(HttpBase):
             self.req("Mo", "POST", "/api/admin/library-access", {"id": self.priv, "roles": []})[0], 403
         )
 
+    def test_download_add_warns_about_books_already_in_visible_libraries(self):
+        self.dq.set_paused(True)
+        urls = [
+            "http://127.0.0.1:1/files/a.zip?x=1",  # a.cbz is in "Library"
+            "http://127.0.0.1:1/files/p.cbz",  # p.cbz is in "Private"
+            "http://127.0.0.1:1/files/new.cbz",
+            "http://127.0.0.1:1/download?id=3",  # name unknown until the server answers
+        ]
+        body = {"urls": urls, "dest": str(self.dir), "after": {"convert": False}}
+        status, r = self.req("Mo", "POST", "/api/download/add", body)
+        self.assertEqual((status, r["added"]), (200, 4))
+        self.assertEqual(
+            [(x["url"], x["file"]) for x in r["in_library"]], [(urls[0], "a.cbz"), (urls[1], "p.cbz")]
+        )
+        self.dq.cancel_all()
+        self.req("Ann", "POST", "/api/admin/library-access", {"id": self.priv, "roles": [3], "guests": True})
+        status, r = self.req("Mo", "POST", "/api/download/add", body)  # Private is hidden from Mo now
+        self.assertEqual([x["file"] for x in r["in_library"]], ["a.cbz"])
+
     def test_non_admin_role_manager_stays_within_their_own(self):
         _, role = self.req(
             "Ann",

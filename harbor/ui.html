@@ -730,7 +730,9 @@ $("dlAdd").onclick = async () => {
     });
     store.set("dest", dest);
     savePref({ download_dir: dest });
-    say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + ".");
+    const have = r.in_library || [];
+    say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + "." +
+      (have.length ? ` Already in the library: ${have.slice(0, 3).map(b => `${b.book} (${b.file})`).join(", ")}${have.length > 3 ? ` and ${have.length - 3} more` : ""}.` : ""));
     $("urls").value = "";
     refresh();
   } catch (e) { say($("dlMsg"), e.message, true); }

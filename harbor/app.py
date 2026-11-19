@@ -202,6 +202,56 @@ class HarborAPI:
         return 404, {"error": "not found"}
 
 
+BOOK_SUFFIXES = (".zip", ".cbz", ".epub")
+
+
+def library_matches(library: Library, urls: list, libraries=None) -> list[dict]:
+    """Books already in the library (in ``libraries``, None for all) whose file name, ignoring
+    .zip/.cbz/.epub, is the one a URL would be saved as. Only a warning: the download still runs."""
+    from urllib.parse import urlsplit
+
+    from dlqueue.download import safe_name
+
+    found = []
+    for url in urls:
+        name = Path(safe_name(urlsplit(str(url)).path))
+        if name.suffix.lower() not in BOOK_SUFFIXES or not name.stem.strip():
+            continue  # a name the server will choose, such as /download?id=3: can't tell yet
+        try:
+            items = library.search(q=name.stem, limit=50, libraries=libraries)["items"]
+        except ValueError:  # no letters or digits to search for
+            continue
+        for b in items:
+            if Path(b["file"]).stem.lower() == name.stem.lower():
+                found.append({"url": str(url), "book": b["title"], "file": b["file"], "id": b["id"]})
+                break
+    return found
+
+
+class LibraryCheckDownloadAPI:
+    """The download API, adding ``in_library`` to an add's answer: the URLs whose file the library
+    already has, among the libraries the user may see."""
+
+    def __init__(self, inner, library: Library, visible=None):
+        self.inner, self.library, self.visible = inner, library, visible
+
+    def state(self) -> dict:
+        return self.inner.state()
+
+    def post(self, action: str, body: dict):
+        status, result, *extra = self.inner.post(action, body)
+        if action == "add" and status == 200 and isinstance(body.get("urls"), list):
+            try:
+                libraries = self.visible() if self.visible else None
+                result = {
+                    **result,
+                    "in_library": library_matches(self.library, body["urls"][:500], libraries),
+                }
+            except Exception as e:  # noqa: BLE001 - a warning must never fail an add
+                print(f"harbor: couldn't check the library for duplicates: {e}", flush=True)
+        return (status, result, *extra)
+
+
 class AuditedLibraryAPI:
     """cbz-shelf's LibraryAPI, recording folder and library changes in the audit log."""
 
@@ -311,6 +361,7 @@ def serve_harbor(
     pages = {}
     if library is not None:
         visible = make_visible(accounts, library) if accounts is not None else None
+        apis["/api/download/"] = LibraryCheckDownloadAPI(apis["/api/download/"], library, visible)
         library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can, visible=visible)
         if guests:
             library_api = GuestSafeLibraryAPI(AuditedLibraryAPI(library_api, accounts, library))

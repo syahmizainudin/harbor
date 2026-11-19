@@ -19,6 +19,8 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 |---|---|
 | `harbor/app.py` | `check_after` (validates a download's convert options), `make_on_saved` (the hand-off), `build` (starts both queues) and `serve_harbor` (mounts `ConvertAPI` at `/api/`, `EnvKeyDownloadAPI` at `/api/download/` and `HarborAPI`, page defaults only, at `/api/harbor/`) |
 | `harbor/config.py` | Settings: `.env` parsing, file lookup, precedence (flag > environment > file > default), validation |
+| `harbor/history.py` | `History` (finished jobs, `history.db`, written by its own thread) and `HistoryAPI` at `/api/history/` |
+| `harbor/maint.py` | `harbor backup` and `harbor doctor` |
 | `harbor/state.py` | `QueueStore`: saves unfinished jobs shortly after they change (changes batched, at most one save per `SAVE_DELAY`), restores them at start-up through the queues' `add` |
 | `harbor/accounts.py` | `Accounts` (users, sessions, extension tokens), `HarborSignIn` (the server's `auth`), `AccountAPI` at `/api/account/` |
 | `harbor/login.html` | The sign-in page, served at `/login` |
@@ -33,7 +35,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `.env.example` | Every setting, commented. Real `.env` files are git-ignored |
 | `harbor/cli.py` | `harbor ui`, and `harbor user add/passwd/list/disable/enable/remove` |
 | `bin/harbor` | Runs the CLI from a checkout |
-| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `test_library_tab.py` (library mounted, conversions landing in it), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
+| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `test_library_tab.py` (library mounted, conversions landing in it), `test_history.py`, `test_maint.py` (backup, doctor), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
 | `ci/release_notes.py`, `.github/workflows/` | Release gate, CI and release pipelines, as in the other two repos |
 
 ## Where a change belongs
@@ -86,6 +88,14 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - **Library data per user.** `LibraryAPI` gets `user_of=_user_id`. At start-up, `Library.give_user_data(0, first_admin)` hands pre-accounts progress and favourites to the first admin.
 - **Schema changes** go in `accounts.MIGRATIONS`, one step each; never drop user data.
 - **Tests** use a temp accounts database. Never point one at `~/.local/share/harbor/harbor.db`.
+
+## History, audit log, backup and doctor
+
+- **History** (`history.py`, its own database so it works with accounts off): one record per job, written when the job first reaches done, skipped, failed or cancelled. `on_change` fires on every progress tick, so `History.on_change` dedupes by `(kind, id) → finished_at` (a retry reuses the id) and queues the record for a writer thread, which waits for the owner with `JobOwners.get_settled`. A worker never waits on SQLite. `cli.close_all` sets `history.enabled = False` before shutting the queues down (cancelled-by-shutdown jobs are restored, not finished) and closes it after them. Never record `auth`. `HistoryAPI` shows your own records, everyone's with `jobs.see_all` (`all=1`), and nothing to guests (`guests=True`, and `/api/history/` isn't in `guest_may`). `history_saved` in `/api/state` is cached and dropped on every write.
+- **Audit log** (`Accounts.audit`, table `audit`, migration 4): written by the API layers, which know the actor: `AccountAPI` (sign-in, failed sign-in, lockout, password, tokens, sessions), `AdminAPI` (every successful action), `AuditedLibraryAPI` (folders and libraries) and `cli.cmd_user` (actor "command line"). Never pass a password, session id or token as a target or detail. A new admin or account action gets an audit line and a check in `SessionsAndAuditTests`. Pruned once a day on write (`HARBOR_AUDIT_DAYS`).
+- **Sessions**: `HarborSignIn.user` records the request's User-Agent in a thread-local (`request_agent()`), and `login` stores it. A session is named to its owner by the first `SESSION_HANDLE` hex characters of its id's hash; `revoke_session` matches that and the user id.
+- **In-library warning** (`LibraryCheckDownloadAPI`, `library_matches`): adds `in_library` to a download add's answer, checking only the libraries the user can see. It never refuses an add, and a failure only logs.
+- **`harbor backup`** only reads the live files (SQLite backup API from a read-only connection) and only deletes its own `YYYYmmdd-HHMMSS` folders beyond `--keep`. **`harbor doctor`** opens databases with `mode=ro`, so it never migrates them; it compares the dependency modules' `__version__` with the checkout's pins.
 
 ## Saved jobs (`state.py`)
 

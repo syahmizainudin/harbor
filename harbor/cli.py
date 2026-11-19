@@ -1,4 +1,5 @@
-"""Command line: ``harbor ui`` starts the console; ``harbor user ...`` manages accounts."""
+"""Command line: ``harbor ui`` starts the console; ``harbor user ...`` manages accounts;
+``harbor backup`` and ``harbor doctor`` back up and check its files."""
 
 from __future__ import annotations
 
@@ -86,7 +87,52 @@ def build_parser() -> argparse.ArgumentParser:
         ("remove", "delete an account; its reading progress stays in the library database"),
     ):
         usub.add_parser(cmd, help=text).add_argument("name")
+    b = sub.add_parser(
+        "backup",
+        help="copy harbor's databases and saved jobs to a new backup folder (safe while harbor runs)",
+    )
+    b.add_argument("--env-file", help="settings file to read, for where the databases are")
+    b.add_argument(
+        "--to", metavar="DIR", help="where to make backups (default ~/.local/share/harbor/backups)"
+    )
+    b.add_argument(
+        "--keep", type=int, default=7, help="newest backups to keep in that folder; 0 keeps all (default 7)"
+    )
+    d = sub.add_parser("doctor", help="check settings, dependencies, databases and folders (changes nothing)")
+    d.add_argument("--env-file", help="settings file to read")
     return ap
+
+
+def cmd_backup(args) -> int:
+    from .maint import backup
+
+    try:
+        if args.keep < 0:
+            raise ConfigError("--keep must be 0 or more")
+        folder, done = backup(load_settings({}, args.env_file), Path(args.to) if args.to else None, args.keep)
+    except (ConfigError, OSError, sqlite3.Error) as e:
+        print(f"harbor: {e}", file=sys.stderr)
+        return 2
+    for line in done:
+        print(line)
+    print(f"Backed up {len(done)} file(s) to {folder}" if done else f"Nothing to back up yet; made {folder}")
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    from .maint import FAIL, doctor
+
+    try:
+        settings = load_settings({}, args.env_file)
+    except (ConfigError, OSError) as e:
+        print(f"FAIL  settings: {e}")
+        return 1
+    results = doctor(settings)
+    for level, message in results:
+        print(f"{level:<4}  {message}")
+    failed = sum(level == FAIL for level, _ in results)
+    print(f"\n{failed} problem(s) found." if failed else "\nNo problems found.")
+    return 1 if failed else 0
 
 
 def _read_password(from_stdin: bool) -> str:
@@ -284,7 +330,8 @@ def cmd_ui(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return cmd_user(args) if args.cmd == "user" else cmd_ui(args)
+    commands = {"user": cmd_user, "backup": cmd_backup, "doctor": cmd_doctor}
+    return commands.get(args.cmd, cmd_ui)(args)
 
 
 if __name__ == "__main__":

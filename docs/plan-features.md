@@ -1,6 +1,6 @@
 # Plan: library tabs, LAN access, OPDS, job history and smaller additions
 
-Status: decisions settled 2026-11-19. Nothing built yet.
+Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 built on harbor main, not released.
 
 ## What was asked
 
@@ -60,7 +60,7 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
 
 20. **One record per finished job**: written once, when a job first reaches done, skipped, failed or cancelled. The record holds the kind (convert or download), the owner, the path or URL, the output, the result and message, `bytes_in`/`bytes_out`, and times. `on_change` fires on every progress tick, so the hook checks the transition. Records are written before `clear_finished` or shutdown drop the job. `QueueStore` only keeps queued and running jobs, so history is separate from it.
 21. **Stored in its own database**, `HARBOR_HISTORY_DB` (default `~/.local/share/harbor/history.db`). This works the same with `HARBOR_ACCOUNTS=false`, where the owner is null. Records older than `HARBOR_HISTORY_DAYS` (default 90, 0 = keep forever) are deleted at start-up and once a day.
-22. **Who sees it**: your own records. With `jobs.see_all`, everyone's. A **History** section on the Convert and Download tabs with filters, and a "Saved N GB" total on Convert (all-time and last 30 days). The API key never goes into a record, and download URLs are stored without their query string when the auth mode is `query`.
+22. **Who sees it**: your own records. With `jobs.see_all`, everyone's. A **History** section on the Convert and Download tabs with filters, and a "Saved N GB" total on Convert (all-time and last 30 days). The API key never goes into a record. A download's URL is stored as the queue holds it, and the queue never adds the key to it (dl-queue applies the key per request).
 
 ### Smaller additions (harbor only)
 
