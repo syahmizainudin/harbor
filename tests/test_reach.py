@@ -203,6 +203,9 @@ class HttpsHarborTests(unittest.TestCase):
         )
         self.assertEqual(self.req(port, "GET", "/login", headers={"Host": "evil.example"})[0], 403)
         self.assertEqual(self.acc.audit_log()["items"][0]["client"], "127.0.0.1")
+        # doctor recognises a harbor answering over HTTPS
+        self.assertEqual(maint._port_check(port, https=True), (maint.OK, f"harbor is running on port {port}"))
+        self.assertEqual(maint._port_check(port)[0], maint.WARN)  # asked in plain HTTP: can't tell
 
     def test_behind_a_proxy(self):
         port = self.start(trust_proxy=True)

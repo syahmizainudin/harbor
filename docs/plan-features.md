@@ -45,7 +45,7 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
     - `HARBOR_TRUST_PROXY` (`true`/`false`).
 13. **Harbor refuses to start** on any address other than loopback unless TLS is configured (or `HARBOR_TRUST_PROXY` is on with a loopback bind), `HARBOR_SECURE_COOKIE` is on, accounts are on, and `HARBOR_ALLOWED_HOSTS` is set. The message names what's missing. This is plan-users decision 3.
 14. **WSL**: the README gets a section on making WSL reachable from the LAN (mirrored networking in `.wslconfig`, or a `netsh interface portproxy` rule and a Windows firewall rule), and on getting a certificate (mkcert, or `tailscale cert`).
-15. The page and the Chrome extension don't change. The extension stays on `localhost`.
+15. The page doesn't change. The Chrome extension stays on `http://localhost`, so it keeps working with a reverse proxy (harbor stays on plain HTTP on 127.0.0.1) but not when harbor serves HTTPS itself. **Open:** an extension that works with harbor's own HTTPS (a second, local plain-HTTP listener, or `https://localhost` permissions and a trusted certificate).
 
 ### OPDS
 
@@ -91,8 +91,8 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
 |---|---|---|---|
 | 1 | Libraries and sub-tabs (1–10) | cbz-shelf 0.5.0, then harbor | cbz-shelf 0.5.0 |
 | 2 | Job history, sessions list, audit log, backup, doctor, duplicate warning (20–27) | harbor only | — |
-| 3 | LAN and HTTPS (11–15), and streamed file bodies for OPDS downloads (16) | cbz-webp 0.5.0 and dl-queue 0.5.0 together (shared code), then harbor | cbz-webp, dl-queue 0.5.0 |
-| 4 | OPDS and reader tokens (16–19) | cbz-shelf 0.5.1, then harbor | cbz-shelf 0.5.1 |
+| 3 | LAN and HTTPS (11–15), and streamed file bodies for OPDS downloads (16) | cbz-webp 0.5.0 and dl-queue 0.5.0 together (shared code), then cbz-shelf 0.5.1 pinning cbz-webp 0.5.0 (pip refuses two different cbz-webp pins), then harbor | cbz-webp, dl-queue 0.5.0, cbz-shelf 0.5.1 |
+| 4 | OPDS and reader tokens (16–19), and hiding folder paths from users without `library.manage` | cbz-shelf 0.5.2, then harbor | cbz-shelf 0.5.2 |
 | 5 | Speed limit, quiet hours, URL ranges, watch folders (28–31) | dl-queue 0.5.1, cbz-webp 0.5.1, then harbor | both |
 
 Phase 1 doesn't depend on the server changes, so it goes first, as the first thing you asked for. OPDS (4) is most useful once LAN access (3) exists. Phase 3 is the gate for phone access. Phases 2 and 5 can be moved without affecting the others.

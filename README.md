@@ -155,7 +155,11 @@ By default harbor is reachable only from this computer. To read on a phone or ta
 
 `harbor doctor` checks all of this and says what's missing.
 
-**Before you open it up:** signed-out visitors can read every library unless you untick **Guests** for it in **Admin → Library access**. Anyone on your network can then see those books. Everything else needs an account.
+**Before you open it up:**
+
+- Signed-out visitors can read every library unless you untick **Guests** for it in **Admin → Library access**. Anyone on your network can then see those books.
+- Accounts work from other devices exactly as they do here. Someone with `convert`, `download` or `library.manage` can browse the names of every folder on this computer in the folder picker. With `convert` or `download`, they can also queue conversions of any folder and downloads into any folder, and with `delete_original` the originals get deleted. Give those permissions only to people you would let use this computer.
+- A series page shows its folder on this computer to everyone who can read it, and `library.manage` sees every library folder. A coming release hides these paths. Until then, open harbor only to people you'd show your folder names to.
 
 ### Option 1: harbor serves HTTPS
 
@@ -167,6 +171,8 @@ HARBOR_TLS_CERT=~/.config/harbor/cert.pem
 HARBOR_TLS_KEY=~/.config/harbor/key.pem
 HARBOR_SECURE_COOKIE=true
 ```
+
+With this option the Chrome extension stops working, because it only talks to `http://localhost` and harbor no longer answers plain HTTP. Option 2 keeps the extension working, since harbor itself stays on `http://127.0.0.1`.
 
 A certificate your devices trust without warnings is easiest to get with [Tailscale](https://tailscale.com/kb/1153/enabling-https): `tailscale cert my-pc.tail1234.ts.net` writes one for your machine's Tailscale name, and it works from any device on your tailnet. [mkcert](https://github.com/FiloSottile/mkcert) works on a home network too, but then every phone needs mkcert's root certificate installed. Keep the key private: `chmod 600 key.pem`.
 
@@ -180,6 +186,8 @@ harbor.lan {
     reverse_proxy 127.0.0.1:8765
 }
 ```
+
+`tls internal` makes Caddy's own certificate authority, which each phone has to trust once (as with mkcert). A real name with a real certificate, such as a Tailscale name, avoids that.
 
 ```bash
 # .env

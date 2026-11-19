@@ -241,7 +241,7 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
         add((OK, f"reachable from other devices as {', '.join(host_list(settings))}, through {how}"))
     if settings.tls_cert and Path(settings.tls_cert).expanduser().is_file():
         add(_cert_check(Path(settings.tls_cert).expanduser()))
-    add(_port_check(settings.port))
+    add(_port_check(settings.port, https=bool(settings.tls_cert)))
     return out
 
 
@@ -261,13 +261,21 @@ def _cert_check(path: Path) -> tuple[str, str]:
     return OK, f"certificate {path}, valid for {int(left)} more day(s)"
 
 
-def _port_check(port: int) -> tuple[str, str]:
+def _port_check(port: int, https: bool = False) -> tuple[str, str]:
     try:
         socket.create_connection(("127.0.0.1", port), timeout=1).close()
     except OSError:
         return OK, f"port {port} is free"
     try:
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        if https:  # only asking who answers: the certificate is checked above, not here
+            import ssl
+
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            conn = http.client.HTTPSConnection("127.0.0.1", port, timeout=2, context=ctx)
+        else:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
         conn.request("GET", "/api/account/status", headers={"Host": f"127.0.0.1:{port}"})
         resp = conn.getresponse()
         resp.read()
