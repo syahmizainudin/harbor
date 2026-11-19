@@ -4,6 +4,10 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+## 0.2.2
+
+Pins cbz-webp 0.5.1, dl-queue 0.5.1 and cbz-shelf 0.5.3 (unchanged).
+
 - **Admin tab sub-tabs:** Users, Roles and permissions, Library access, Audit log and Series each get their own sub-tab instead of one long page. Only the sections you may use are offered, the last one you opened is remembered, and the audit log and series list load when their sub-tab opens.
 
 ## 0.2.1
