@@ -179,6 +179,9 @@ class ConsoleTests(Base):
                 "downloads",
                 "downloads_paused",
                 "download_workers",
+                "download_rate",
+                "download_hours",
+                "download_waiting",
                 "harbor",
             },
         )  # the page's JS reads exactly these keys

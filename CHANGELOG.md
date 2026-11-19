@@ -10,6 +10,9 @@ Pins cbz-webp 0.5.0, dl-queue 0.5.0 and cbz-shelf 0.5.2.
 - The audit log records the address each event came from (accounts migration 5).
 - **Reader apps (OPDS):** the library is an OPDS catalog at `/api/library/opds` (cbz-shelf 0.5.2) for Panels, Chunky, KOReader and others: browse, search, stream pages, download books. They sign in with your account name and a **reader-app token** from Your account (accounts migration 6 adds token kinds), which can only read the libraries you may see. Your password never works there.
 - Series folder paths are shown only to people with `library.manage` (cbz-shelf 0.5.2).
+- **Download speed limit and quiet hours** (dl-queue 0.5.1): `HARBOR_DOWNLOAD_RATE` (such as `5M`) for all downloads together, and `HARBOR_DOWNLOAD_HOURS` (such as `01:00-07:00`) for when new downloads may start. The Download tab shows both.
+- **URL ranges** (dl-queue 0.5.1): `{1..20}` or `{01..20}` in a URL adds one download per number.
+- **Watch folders** (cbz-webp 0.5.1): `HARBOR_WATCH_DIRS` converts archives that appear in those folders with the Convert defaults. Originals are kept unless `HARBOR_WATCH_DELETE_ORIGINAL=true`. `HARBOR_WATCH_POLL` sets how often they're checked.
 
 - **History:** every finished conversion and download is kept in `history.db` (`HARBOR_HISTORY_DB`, `HARBOR_HISTORY_DAYS`, default 90 days), and a **History** panel under each queue shows yours, or everyone's with `jobs.see_all`. The Convert tab shows the space saved in total and in the last 30 days.
 - **Where you're signed in:** Your account lists the browsers signed in to your account (with when they signed in and were last used), and signs any of them out. Accounts migration 4 records each session's browser.

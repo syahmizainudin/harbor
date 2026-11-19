@@ -45,7 +45,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
   2. Release it there (tag `v<version>`).
   3. Bump the tag in this repo's `pyproject.toml`.
 - **The page is harbor's own.** It is the union of the two tools' pages: the Convert tab is `cbzwebp/ui.html`'s body and the Download tab is `dlqueue/ui.html`'s, plus the tabs and the "Convert downloads" option. When either tool's page changes, carry the change over here by hand.
-- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
+- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers`, `download_rate`, `download_hours`, `download_waiting` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
 
 ## The rules of the two tools still apply
 
@@ -96,6 +96,12 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - **Sessions**: `HarborSignIn.user` records the request's User-Agent in a thread-local (`request_agent()`), and `login` stores it. A session is named to its owner by the first `SESSION_HANDLE` hex characters of its id's hash; `revoke_session` matches that and the user id.
 - **In-library warning** (`LibraryCheckDownloadAPI`, `library_matches`): adds `in_library` to a download add's answer, checking only the libraries the user can see. It never refuses an add, and a failure only logs.
 - **`harbor backup`** only reads the live files (SQLite backup API from a read-only connection) and only deletes its own `YYYYmmdd-HHMMSS` folders beyond `--keep`. **`harbor doctor`** opens databases with `mode=ro`, so it never migrates them; it compares the dependency modules' `__version__` with the checkout's pins.
+
+## Speed limit, quiet hours, watch folders
+
+- The limit and hours are dl-queue's (`DownloadQueue(rate=, hours=)`); harbor only validates `HARBOR_DOWNLOAD_RATE`/`_HOURS` with dl-queue's own parsers and passes them to `build`.
+- Watch folders are cbz-webp's `Watcher`. `cli.cmd_ui` starts it after restoring saved jobs and stops it first in `close_all`. `HARBOR_WATCH_DELETE_ORIGINAL` is separate from `HARBOR_DELETE_ORIGINAL` and defaults to false; never tie them together. A watch folder that doesn't exist is a note on the page, not a failed start.
+- `tests/test_limits_watch.py` starts a real `harbor ui` subprocess with temp files, `HARBOR_ACCOUNTS=false` and a temp `HOME`.
 
 ## Saved jobs (`state.py`)
 

@@ -102,6 +102,11 @@ harbor ui --open        # http://127.0.0.1:8765/
 | | `HARBOR_ALLOWED_HOSTS` | | Names or addresses other devices use to reach harbor, comma-separated |
 | | `HARBOR_TLS_CERT`, `HARBOR_TLS_KEY` | | HTTPS certificate and key (PEM). The key must be readable only by you |
 | | `HARBOR_TRUST_PROXY` | `false` | A reverse proxy on this computer serves harbor over HTTPS |
+| | `HARBOR_DOWNLOAD_RATE` | no limit | Speed limit for all downloads together, such as `5M` or `500K` |
+| | `HARBOR_DOWNLOAD_HOURS` | always | Start downloads only between these local times, such as `01:00-07:00` |
+| | `HARBOR_WATCH_DIRS` | | Folders whose new archives are converted on their own, separated by `;` |
+| | `HARBOR_WATCH_DELETE_ORIGINAL` | `false` | Delete watched originals after converting. Doesn't follow `HARBOR_DELETE_ORIGINAL` |
+| | `HARBOR_WATCH_POLL` | 30 | Seconds between checks of the watch folders |
 | `--env-file PATH` | | | Read settings from this file |
 
 Ctrl+C stops the console. Running jobs are cancelled, originals are kept, and partial downloads are removed.
@@ -239,6 +244,8 @@ With accounts, each user's own defaults win over these values. Without accounts,
 
 The tabs are in a sidebar on the left; **« Collapse** shrinks it to icons. While a book is open, the sidebar steps aside and the reader fills the window.
 
+**Watch folders:** with `HARBOR_WATCH_DIRS`, every `.zip` or `.cbz` that appears in those folders (or their subfolders) is converted with harbor's Convert defaults, once it has stopped changing (checked every `HARBOR_WATCH_POLL` seconds). Each file is converted once, and one that fails is tried again only after it changes. Originals are **kept** unless `HARBOR_WATCH_DELETE_ORIGINAL=true`, whatever `HARBOR_DELETE_ORIGINAL` says, because nobody looks at a watched file first. With accounts, these conversions belong to nobody, so only people with `jobs.see_all` see them. The Convert tab shows how many folders are watched.
+
 **Convert tab:** add folders or archives, or click **Open folder…** to browse WSL's folders, with shortcuts to home and each Windows drive. Set the quality and whether to delete each original `.zip` once its `.cbz` has been checked. See [cbz-webp's README](https://github.com/syahmizainudin/cbz-webp#what-happens-to-each-archive) for exactly what happens to each archive.
 
 **Download tab:**
@@ -246,6 +253,10 @@ The tabs are in a sidebar on the left; **« Collapse** shrinks it to icons. Whil
 1. Paste file URLs and choose a folder to save to.
 2. Choose how the API key is sent: Bearer, a named header, a named query parameter, or none.
 3. Leave **Convert .zip / .cbz downloads** ticked to send each downloaded archive to the Convert queue, with the Convert tab's quality and delete settings. Each download then shows its convert job's progress. A file that isn't converted (an `.epub`, or with this unticked) that lands in a library folder joins the library right away.
+
+`{1..20}` in a URL stands for 20 URLs, one per number, and `{01..20}` keeps the zero padding. One range per URL, at most 500 URLs per add. This works from the Chrome extension too.
+
+With `HARBOR_DOWNLOAD_RATE`, all downloads together stay under that speed. With `HARBOR_DOWNLOAD_HOURS`, new downloads start only in those hours, and the tab shows "waiting until …" outside them. A download that is already running finishes.
 
 If the library already has a book with the same file name as a URL (ignoring `.zip`, `.cbz` and `.epub`), the message after **Add to queue** names it. The download is queued anyway. Only libraries you can see are checked, and a URL whose file name the server picks later (such as `/download?id=3`) can't be checked.
 

@@ -270,7 +270,7 @@
   <!-- ===================== Download ===================== -->
   <div id="pane-download" role="tabpanel" aria-labelledby="tab-download" hidden><div class="pane-inner">
     <section class="panel">
-      <label for="urls">File URLs (one per line)</label>
+      <label for="urls">File URLs (one per line; <span class="mono">{1..20}</span> in a URL makes one URL per number)</label>
       <textarea id="urls" placeholder="https://example.com/files/Chapter%2001.zip"></textarea>
 
       <div class="grid">
@@ -776,6 +776,7 @@ function renderConvert(st) {
   if (bin) chips.push(`<span class="chip">saved <b>${fmt(bin - bout)}</b> (${Math.round(100 * (1 - bout / bin))}%)</span>`);
   const hs = st.history_saved;
   if (hs && hs.all > 0) chips.push(`<span class="chip" title="From the conversion history: ${hs.conversions} conversion(s)">saved in total <b>${fmt(hs.all)}</b>${hs.last_30_days > 0 ? ` · last 30 days <b>${fmt(hs.last_30_days)}</b>` : ""}</span>`);
+  if (st.harbor?.watching) chips.push(`<span class="chip" title="Archives that appear in harbor's watch folders (HARBOR_WATCH_DIRS) are converted on their own">watching <b>${st.harbor.watching}</b> folder${st.harbor.watching === 1 ? "" : "s"}</span>`);
   chips.push(`<span class="chip">${st.workers} archive worker(s) · ${st.image_threads} image threads${paused ? " · <b>paused</b>" : ""}</span>`);
   setHTML($("stats"), chips.join(""));
   setText($("badge-convert"), (c.queued || 0) + (c.running || 0) || "");
@@ -804,6 +805,8 @@ function renderDownloads(st) {
   const chips = chipsFor(c);
   if (got) chips.push(`<span class="chip">downloaded <b>${fmt(got)}</b></span>`);
   chips.push(`<span class="chip">${st.download_workers} download(s) at a time${dlPaused ? " · <b>paused</b>" : ""}</span>`);
+  if (st.download_rate) chips.push(`<span class="chip">limit <b>${fmt(st.download_rate)}/s</b></span>`);
+  if (st.download_hours) chips.push(`<span class="chip" title="New downloads start only in these hours">${st.download_waiting ? `<b>waiting until ${esc(st.download_hours.split("-")[0])}</b>` : `hours ${esc(st.download_hours)}`}</span>`);
   setHTML($("dlStats"), chips.join(""));
   setText($("badge-download"), (c.queued || 0) + (c.running || 0) || "");
 

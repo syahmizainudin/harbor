@@ -103,6 +103,11 @@ class Settings:
     tls_cert: str = ""  # HTTPS certificate (PEM), with tls_key
     tls_key: str = ""
     trust_proxy: bool = False  # a reverse proxy on this machine serves harbor over HTTPS
+    download_rate: int = 0  # bytes a second for all downloads together; 0 = no limit
+    download_hours: str = ""  # "01:00-07:00": new downloads start only then
+    watch_dirs: str = ""  # folders whose new archives are converted on their own, ";"-separated
+    watch_delete_original: bool = False  # never follows HARBOR_DELETE_ORIGINAL: nobody reviews these
+    watch_poll: int = 30  # seconds between checks of the watch folders
     source: str | None = None  # the .env file used, for the startup message
 
     def page_defaults(self) -> dict:
@@ -182,6 +187,25 @@ def _host_names(v: str, name: str) -> str:
     return v
 
 
+def _rate(v: str, name: str) -> int:
+    from dlqueue.download import parse_size
+
+    try:
+        return parse_size(v)
+    except ValueError as e:
+        raise ConfigError(f"{name}: {e}") from None
+
+
+def _hours(v: str, name: str) -> str:
+    from dlqueue.download import parse_hours
+
+    try:
+        parse_hours(v)
+    except ValueError as e:
+        raise ConfigError(f"{name}: {e}") from None
+    return v.strip()
+
+
 def _text(v: str, name: str) -> str:
     if any(c in v for c in "\r\n\0"):
         raise ConfigError(f"{name} contains a line break")
@@ -218,7 +242,17 @@ VARS = {
     "tls_cert": ("HARBOR_TLS_CERT", _text),
     "tls_key": ("HARBOR_TLS_KEY", _text),
     "trust_proxy": ("HARBOR_TRUST_PROXY", _bool),
+    "download_rate": ("HARBOR_DOWNLOAD_RATE", _rate),
+    "download_hours": ("HARBOR_DOWNLOAD_HOURS", _hours),
+    "watch_dirs": ("HARBOR_WATCH_DIRS", _text),
+    "watch_delete_original": ("HARBOR_WATCH_DELETE_ORIGINAL", _bool),
+    "watch_poll": ("HARBOR_WATCH_POLL", _int(5, 3600)),
 }
+
+
+def watch_list(s: Settings) -> list[str]:
+    return [d.strip() for d in s.watch_dirs.split(";") if d.strip()]
+
 
 LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 

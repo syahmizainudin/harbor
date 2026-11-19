@@ -1,6 +1,6 @@
 # Plan: library tabs, LAN access, OPDS, job history and smaller additions
 
-Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 on harbor main (pushed, not released). Phase 3 released in the tools (cbz-webp 0.5.0, dl-queue 0.5.0, cbz-shelf 0.5.1) and on harbor main. Phase 4 released (cbz-shelf 0.5.2) and on harbor main.
+Status: decisions settled 2026-11-19. Phase 1 released (cbz-shelf 0.5.0, harbor main). Phase 2 on harbor main (pushed, not released). Phase 3 released in the tools (cbz-webp 0.5.0, dl-queue 0.5.0, cbz-shelf 0.5.1) and on harbor main. Phase 4 released (cbz-shelf 0.5.2) and on harbor main. Phase 5 built and committed locally (dl-queue, cbz-webp, harbor); waiting for the tool tags.
 
 ## What was asked
 
@@ -93,7 +93,7 @@ Not chosen: the "Read" button on finished downloads (download → convert → bo
 | 2 | Job history, sessions list, audit log, backup, doctor, duplicate warning (20–27) | harbor only | — |
 | 3 | LAN and HTTPS (11–15), and streamed file bodies for OPDS downloads (16) | cbz-webp 0.5.0 and dl-queue 0.5.0 together (shared code), then cbz-shelf 0.5.1 pinning cbz-webp 0.5.0 (pip refuses two different cbz-webp pins), then harbor | cbz-webp, dl-queue 0.5.0, cbz-shelf 0.5.1 |
 | 4 | OPDS and reader tokens (16–19), and hiding folder paths from users without `library.manage` | cbz-shelf 0.5.2, then harbor | cbz-shelf 0.5.2 |
-| 5 | Speed limit, quiet hours, URL ranges, watch folders (28–31) | dl-queue 0.5.1, cbz-webp 0.5.1, then harbor | both |
+| 5 | Speed limit, quiet hours, URL ranges, watch folders (28–31) | dl-queue 0.5.1, cbz-webp 0.5.1, then cbz-shelf 0.5.3 pinning cbz-webp 0.5.1, then harbor | all three |
 
 Phase 1 doesn't depend on the server changes, so it goes first, as the first thing you asked for. OPDS (4) is most useful once LAN access (3) exists. Phase 3 is the gate for phone access. Phases 2 and 5 can be moved without affecting the others.
 

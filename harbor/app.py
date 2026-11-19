@@ -20,7 +20,7 @@ from cbzshelf.web import LibraryAPI
 from cbzwebp.core import ARCHIVE_EXTS
 from cbzwebp.jobqueue import DONE, JobQueue
 from cbzwebp.web import ConvertAPI, serve
-from dlqueue.download import Download, DownloadQueue
+from dlqueue.download import Download, DownloadQueue, parse_hours
 from dlqueue.web import DownloadAPI
 
 from . import __version__
@@ -42,6 +42,12 @@ def missing_dependencies() -> list[str]:
     for param in ("can", "visible"):
         if param not in inspect.signature(LibraryAPI).parameters:
             missing.append(f"cbz-shelf LibraryAPI({param}=...)")
+    if "rate" not in inspect.signature(DownloadQueue).parameters:
+        missing.append("dl-queue DownloadQueue(rate=...)")
+    try:
+        import cbzwebp.watch  # noqa: F401
+    except ImportError:
+        missing.append("cbz-webp watch folders")
     for name in ("give_user_data", "scan_file", "libraries", "book_file"):
         if not hasattr(Library, name):
             missing.append(f"cbz-shelf Library.{name}")
@@ -104,6 +110,8 @@ def build(
     on_convert_change: Callable | None = None,
     on_download_kept: Callable[[Path], None] | None = None,
     owners=None,
+    rate: int = 0,
+    hours: str = "",
 ) -> tuple[JobQueue, DownloadQueue]:
     """Start both queues, with downloads handing archives to the convert queue.
 
@@ -125,6 +133,8 @@ def build(
         timeout=timeout,
         retries=retries,
         on_change=on_change,
+        rate=rate,
+        hours=parse_hours(hours) if hours else None,
     ).start()
     return convert_queue, download_queue
 
@@ -193,7 +203,13 @@ class HarborAPI:
         user = current_user()
         if self.guests and user is None:  # no folders, key names or notes for guests
             return {"harbor": {"version": __version__}}
-        defaults = {**self.settings.page_defaults(), "convert_downloads": True}
+        from .config import watch_list
+
+        defaults = {
+            **self.settings.page_defaults(),
+            "convert_downloads": True,
+            "watching": len(watch_list(self.settings)),
+        }
         if user:  # the signed-in user's own defaults win over the .env ones
             prefs = user.get("prefs", {})
             defaults.update({k: prefs[k] for k in USER_PAGE_PREFS if k in prefs})

@@ -25,7 +25,7 @@ from .app import (
 from cbzshelf.library import Library
 
 from .accounts import Accounts, default_accounts_db
-from .config import ConfigError, check_reach, host_list, load_settings
+from .config import ConfigError, check_reach, host_list, load_settings, watch_list
 from .history import History, default_history_db
 from .perms import JobOwners
 from .state import QueueStore, default_state_file
@@ -261,11 +261,17 @@ def cmd_ui(args) -> int:
         on_change=changed,
         on_convert_change=make_library_hook(library),
         on_download_kept=make_library_file_hook(library),
+        rate=settings.download_rate,
+        hours=settings.download_hours,
     )
     store.attach(cq, dq, owners)
 
+    watcher = None
+
     def close_all(save: bool) -> None:
         """Stop everything, in this order. ``save=False`` keeps the saved jobs from the last run."""
+        if watcher:
+            watcher.stop()  # first: nothing new is queued while stopping
         if save:
             store.save()  # first: shutting down marks running jobs cancelled
         store.enabled = False  # no save from here on
@@ -305,6 +311,23 @@ def cmd_ui(args) -> int:
     if settings.library_scan and library.roots():
         library.scan()  # picks up what changed while harbor was stopped; runs in the background
     notes[:] = store.restore(settings.api_key) if settings.restore else []
+    if watch_list(settings):
+        from cbzwebp.watch import Watcher
+
+        try:
+            watcher = Watcher(
+                cq,
+                watch_list(settings),
+                settings.quality,
+                method=settings.method,
+                delete_original=settings.watch_delete_original,
+                poll=settings.watch_poll,
+            ).start()
+            kept = "deleted" if settings.watch_delete_original else "kept"
+            print(f"harbor: watching {', '.join(map(str, watcher.folders))} (originals {kept})", flush=True)
+        except ValueError as e:
+            notes.append(f"Not watching folders: {e}")
+            print(f"harbor: {e}; not watching folders", file=sys.stderr, flush=True)
     for note in notes:
         print(f"harbor: {note}", flush=True)
     url = f"http{'s' if settings.tls_cert else ''}://127.0.0.1:{settings.port}/"
