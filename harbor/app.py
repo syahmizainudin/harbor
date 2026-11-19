@@ -10,6 +10,7 @@ All the queue, file and server logic lives in those two packages. Harbor adds on
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import ClassVar
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -201,6 +202,65 @@ class HarborAPI:
         return 404, {"error": "not found"}
 
 
+class AuditedLibraryAPI:
+    """cbz-shelf's LibraryAPI, recording folder and library changes in the audit log."""
+
+    EVENTS: ClassVar[dict[str, str]] = {
+        "add-root": "library folder added",
+        "remove-root": "library folder removed",
+        "move-root": "library folder moved",
+        "remove-missing": "missing books forgotten",
+        "add-library": "library added",
+        "rename-library": "library renamed",
+        "remove-library": "library removed",
+    }
+
+    def __init__(self, inner, accounts, library: Library):
+        self.inner, self.accounts, self.library = inner, accounts, library
+
+    def state(self) -> dict:
+        return self.inner.state()
+
+    def get(self, action: str, query: dict):
+        return self.inner.get(action, query)
+
+    def post(self, action: str, body: dict):
+        from cbzwebp.web import current_user
+
+        event = self.EVENTS.get(action)
+        if event is None:
+            return self.inner.post(action, body)
+        roots = {r["id"]: r["path"] for r in self.library.roots()}
+        libs = {x["id"]: x["name"] for x in self.library.libraries(counts=False)}
+        status, result, *extra = self.inner.post(action, body)
+        if status == 200:
+            if action == "add-root":
+                target, detail = result.get("path", ""), libs.get(result.get("library_id"), "")
+            elif action in ("remove-root", "move-root"):
+                target = roots.get(_int_or(body.get("id")), "")
+                detail = libs.get(_int_or(body.get("library_id")), "") if action == "move-root" else ""
+            elif action == "remove-missing":
+                target, detail = (
+                    roots.get(_int_or(body.get("root_id")), "all folders"),
+                    f"{result.get('removed')} book(s)",
+                )
+            elif action == "add-library":
+                target, detail = result.get("name", ""), ""
+            elif action == "rename-library":
+                target, detail = libs.get(_int_or(body.get("id")), ""), f"now {result.get('name', '')}"
+            else:
+                target, detail = libs.get(_int_or(body.get("id")), ""), ""
+            self.accounts.audit(event, target, detail, actor=current_user())
+        return (status, result, *extra)
+
+
+def _int_or(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _user_id() -> int:
     """The signed-in user's id for the library (0 without accounts)."""
     from cbzwebp.web import current_user
@@ -218,6 +278,7 @@ def serve_harbor(
     library: Library | None = None,
     accounts=None,
     owners=None,
+    history=None,
 ) -> ThreadingHTTPServer:
     """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
     with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab).
@@ -243,11 +304,17 @@ def serve_harbor(
         ),
         "/api/harbor/": HarborAPI(settings, notes, guests),
     }
+    if history is not None:
+        from .history import HistoryAPI
+
+        apis["/api/history/"] = HistoryAPI(history, guests)
     pages = {}
     if library is not None:
         visible = make_visible(accounts, library) if accounts is not None else None
         library_api = LibraryAPI(library, user_of=_user_id, can=guest_can if guests else can, visible=visible)
-        apis["/api/library/"] = GuestSafeLibraryAPI(library_api) if guests else library_api
+        if guests:
+            library_api = GuestSafeLibraryAPI(AuditedLibraryAPI(library_api, accounts, library))
+        apis["/api/library/"] = library_api
         pages["/library"] = LIBRARY_HTML
     auth = None
     if accounts is not None:

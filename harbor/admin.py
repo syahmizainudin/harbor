@@ -56,6 +56,26 @@ class AdminAPI:
             out["admin_libraries"] = self._libraries(me)
         return out
 
+    def get(self, action: str, query: dict):
+        import json
+
+        def out(status, obj):
+            return status, {"Content-Type": "application/json"}, json.dumps(obj).encode()
+
+        me = current_user()
+        if not me:
+            return out(401, {"error": "sign in first"})
+        if action == "audit":
+            if "users.manage" not in me["perms"]:
+                return out(403, DENIED)
+            return out(
+                200,
+                self.accounts.audit_log(
+                    int(query.get("limit", 100)), int(query.get("offset", 0)), query.get("action", "")
+                ),
+            )
+        return out(404, {"error": "not found"})
+
     def post(self, action: str, body: dict):
         me = current_user()
         if not me:
@@ -87,10 +107,14 @@ class AdminAPI:
         try:
             if action == "user-add":
                 role = role_to_give()
-                return 200, acc.add(str(body.get("name", "")), str(body.get("password", "")), role=role["id"])
+                user = acc.add(str(body.get("name", "")), str(body.get("password", "")), role=role["id"])
+                acc.audit("user added", user["name"], f"role {role['name']}", actor=me)
+                return 200, user
             if action == "user-role":
                 user, role = target(), role_to_give()
-                return 200, acc.set_role(user["name"], role["id"])
+                result = acc.set_role(user["name"], role["id"])
+                acc.audit("role given", user["name"], f"{user['role']} → {role['name']}", actor=me)
+                return 200, result
             if action == "user-disable":
                 user = target()
                 if user["id"] == me["id"]:
@@ -99,22 +123,27 @@ class AdminAPI:
                 if not isinstance(disabled, bool):
                     raise ValueError("disabled must be true or false")
                 acc.set_disabled(user["name"], disabled)
+                acc.audit("user disabled" if disabled else "user enabled", user["name"], actor=me)
                 return 200, acc.get_id(user["id"])
             if action == "user-password":
                 user = target()
                 acc.set_password(user["name"], str(body.get("password", "")))  # signs them out everywhere
+                acc.audit("password reset", user["name"], "signed out everywhere", actor=me)
                 return 200, {"ok": True}
             if action == "user-remove":
                 user = target()
                 if user["id"] == me["id"]:
                     raise ValueError("you can't remove your own account")
                 acc.remove(user["name"])
+                acc.audit("user removed", user["name"], actor=me)
                 return 200, {"ok": True}
             if action == "role-add":
                 perms = clean_perms(body.get("perms") or [])  # unknown names: 400 first
                 if not within(perms):
                     raise PermissionError("you can't give permissions you don't have")
-                return 200, acc.add_role(str(body.get("name", "")), perms)
+                role = acc.add_role(str(body.get("name", "")), perms)
+                acc.audit("role added", role["name"], ", ".join(role["perms"]) or "no permissions", actor=me)
+                return 200, role
             if action == "role-update":
                 role = acc.role(int(body["id"]))
                 perms = body.get("perms")
@@ -123,7 +152,16 @@ class AdminAPI:
                     raise PermissionError("that role has permissions you don't have")
                 if perms is not None and not within(perms):
                     raise PermissionError("you can't give permissions you don't have")
-                return 200, acc.update_role(role["id"], body.get("name"), perms)
+                result = acc.update_role(role["id"], body.get("name"), perms)
+                changes = []
+                if result["name"] != role["name"]:
+                    changes.append(f"renamed from {role['name']}")
+                if perms is not None:
+                    added = [x for x in result["perms"] if x not in role["perms"]]
+                    taken = [x for x in role["perms"] if x not in result["perms"]]
+                    changes += [f"+{x}" for x in added] + [f"-{x}" for x in taken]
+                acc.audit("role changed", result["name"], " ".join(changes), actor=me)
+                return 200, result
             if action == "library-access":
                 lid, roles, guests = int(body["id"]), body.get("roles"), body.get("guests", True)
                 if self.library is None:
@@ -142,12 +180,23 @@ class AdminAPI:
                             raise PermissionError("that changes a role with permissions you don't have")
                 result = acc.set_library_access(lid, roles, guests)
                 acc.forget_libraries({x["id"] for x in self.library.libraries(counts=False)})
+                names = {r["id"]: r["name"] for r in acc.roles()}
+                who = (
+                    "every role" if result["roles"] is None else ", ".join(names[r] for r in result["roles"])
+                )
+                acc.audit(
+                    "library access",
+                    current["name"],
+                    f"{who or 'Admin only'}; guests {'yes' if guests else 'no'}",
+                    actor=me,
+                )
                 return 200, result
             if action == "role-remove":
                 role = acc.role(int(body["id"]))
                 if not role["locked"] and not within(role["perms"]):
                     raise PermissionError("that role has permissions you don't have")
                 acc.remove_role(role["id"])
+                acc.audit("role removed", role["name"], actor=me)
                 return 200, {"ok": True}
         except PermissionError as e:
             return 403, {"error": str(e)}

@@ -47,6 +47,8 @@
   body.narrow .side-btn { justify-content: center; }
   body.narrow .side-btn .txt { display: none; }
   #acctDlg { width: min(520px, calc(100vw - 32px)); }
+  details.hist > summary { cursor: pointer; list-style-position: inside; }
+  details.hist .more { text-align: center; margin-top: 8px; }
   /* admin */
   .matrix { border-collapse: collapse; }
   .matrix th, .matrix td { padding: 6px 10px; border-top: 1px solid var(--line); text-align: center; white-space: nowrap; }
@@ -245,6 +247,24 @@
         <tbody id="rows"><tr><td colspan="6" class="empty">Queue is empty.</td></tr></tbody>
       </table>
     </section>
+    <section class="panel">
+      <details class="hist" id="cvHist" data-kind="convert">
+        <summary><strong>History</strong> <span class="note">finished conversions, kept after Clear finished and restarts</span></summary>
+        <div class="bar-head" style="margin-top:8px">
+          <div class="stats" id="cvHistStats"></div>
+          <div class="actions">
+            <select id="cvHistState" aria-label="Show"><option value="">Everything</option><option value="done">Done</option><option value="failed">Failed</option><option value="skipped">Skipped</option><option value="cancelled">Cancelled</option></select>
+            <label class="check seeall" hidden><input type="checkbox" id="cvHistAll"> Everyone's</label>
+            <button id="cvHistRefresh">Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Archive</th><th>Result</th><th>Size</th><th>Finished</th></tr></thead>
+          <tbody id="cvHistRows"></tbody>
+        </table>
+        <div class="msg" id="cvHistMsg"></div>
+      </details>
+    </section>
   </div></div>
 
   <!-- ===================== Download ===================== -->
@@ -309,6 +329,24 @@
         <tbody id="dlRows"><tr><td colspan="5" class="empty">No downloads yet.</td></tr></tbody>
       </table>
     </section>
+    <section class="panel">
+      <details class="hist" id="dlHist" data-kind="download">
+        <summary><strong>History</strong> <span class="note">finished downloads, kept after Clear finished and restarts</span></summary>
+        <div class="bar-head" style="margin-top:8px">
+          <div class="stats" id="dlHistStats"></div>
+          <div class="actions">
+            <select id="dlHistState" aria-label="Show"><option value="">Everything</option><option value="done">Done</option><option value="failed">Failed</option><option value="skipped">Skipped</option><option value="cancelled">Cancelled</option></select>
+            <label class="check seeall" hidden><input type="checkbox" id="dlHistAll"> Everyone's</label>
+            <button id="dlHistRefresh">Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>File</th><th>Result</th><th>Size</th><th>Finished</th></tr></thead>
+          <tbody id="dlHistRows"></tbody>
+        </table>
+        <div class="msg" id="dlHistMsg"></div>
+      </details>
+    </section>
   </div></div>
   <!-- ===================== Admin ===================== -->
   <div id="pane-admin" role="tabpanel" aria-labelledby="tab-admin" hidden><div class="pane-inner">
@@ -339,6 +377,16 @@
       <div class="bar-head"><strong>Library access</strong><span class="note">Who can see each library. Admin always sees all of them. Libraries are added in the Library tab, under Folders → Libraries…</span></div>
       <div style="overflow-x:auto"><table class="matrix" id="admLibs"></table></div>
       <div class="msg" id="admLibsMsg"></div>
+    </section>
+    <section class="panel" id="admAuditBox" hidden>
+      <div class="bar-head"><strong>Audit log</strong>
+        <span class="actions"><span class="note">Sign-ins, account, role and library changes.</span> <button class="small" id="auditRefresh">Refresh</button></span></div>
+      <table>
+        <thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Details</th></tr></thead>
+        <tbody id="admAudit"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+      </table>
+      <div class="more" id="auditMore"></div>
+      <div class="msg" id="admAuditMsg"></div>
     </section>
     <section class="panel" id="admSeriesBox" hidden>
       <div class="bar-head"><strong>Series</strong>
@@ -390,6 +438,12 @@
       <p class="note">Quality, effort, deleting originals, the download folder and how the API key is sent are saved with your account as you change them, in any browser. The Chrome extension uses them too.</p>
       <button id="prefsReset">Go back to harbor's defaults</button>
       <div class="msg" id="prefsMsg"></div>
+    </section>
+    <section>
+      <h3>Where you're signed in</h3>
+      <p class="note">Each browser that signed in to your account. Sign one out if you no longer use it or don't recognise it.</p>
+      <ul class="tokens" id="sessionList"></ul>
+      <div class="msg" id="sessionMsg"></div>
     </section>
     <section>
       <h3>Chrome extension</h3>
@@ -460,7 +514,7 @@ function showTab(name) {
   }
   // The library loads the first time its tab opens, not with every harbor page view.
   if (name === "library" && !$("libFrame").src) $("libFrame").src = "/library";
-  if (name === "admin") setTimeout(() => loadAdminSeries());  // after the script has fully loaded
+  if (name === "admin") setTimeout(() => { loadAdminSeries(); loadAudit(); });  // after the script has fully loaded
   store.set("tab", name);
 }
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
@@ -497,7 +551,8 @@ function applyPerms(next) {
   $("admUsersBox").hidden = !has("users.manage") || perms === null;
   $("admRolesBox").hidden = !(has("users.manage") || has("roles.manage")) || perms === null;
   $("admSeriesBox").hidden = !has("library.edit") || perms === null;
-  if (!$("pane-admin").hidden) loadAdminSeries();
+  $("admAuditBox").hidden = !has("users.manage") || perms === null;
+  if (!$("pane-admin").hidden) { loadAdminSeries(); loadAudit(); }
 }
 
 /* ---------- sidebar ---------- */
@@ -714,6 +769,8 @@ function renderConvert(st) {
   for (const j of st.jobs) if (j.state === "done") { bin += j.bytes_in; bout += j.bytes_out; }
   const chips = chipsFor(c);
   if (bin) chips.push(`<span class="chip">saved <b>${fmt(bin - bout)}</b> (${Math.round(100 * (1 - bout / bin))}%)</span>`);
+  const hs = st.history_saved;
+  if (hs && hs.all > 0) chips.push(`<span class="chip" title="From the conversion history: ${hs.conversions} conversion(s)">saved in total <b>${fmt(hs.all)}</b>${hs.last_30_days > 0 ? ` · last 30 days <b>${fmt(hs.last_30_days)}</b>` : ""}</span>`);
   chips.push(`<span class="chip">${st.workers} archive worker(s) · ${st.image_threads} image threads${paused ? " · <b>paused</b>" : ""}</span>`);
   setHTML($("stats"), chips.join(""));
   setText($("badge-convert"), (c.queued || 0) + (c.running || 0) || "");
@@ -770,6 +827,52 @@ function renderDownloads(st) {
   }).join(""));
 }
 
+/* ---------- history ---------- */
+const HIST_PAGE = 50;
+const hist = { cv: { items: [], total: 0, seen: null }, dl: { items: [], total: 0, seen: null } };
+function when(t) { return t ? new Date(t * 1000).toLocaleString() : "–"; }
+async function loadHistory(k, more = false) {
+  const box = $(k + "Hist"), h = hist[k];
+  if (!box.open) return;
+  const q = new URLSearchParams({ kind: box.dataset.kind, limit: HIST_PAGE, offset: more ? h.items.length : 0 });
+  if ($(k + "HistState").value) q.set("state", $(k + "HistState").value);
+  if ($(k + "HistAll").checked) q.set("all", "1");
+  try {
+    const r = await api("/api/history/list?" + q);
+    h.items = more ? h.items.concat(r.items) : r.items; h.total = r.total;
+    say($(k + "HistMsg"), "");
+  } catch (e) { return say($(k + "HistMsg"), e.message, true); }
+  const conv = k === "cv";
+  $(k + "HistRows").innerHTML = h.items.map(j => {
+    const size = conv ? (j.bytes_out ? `${fmt(j.bytes_in)} → ${fmt(j.bytes_out)}` : fmt(j.bytes_in)) : fmt(j.bytes_in);
+    const where = conv ? j.source.slice(0, j.source.length - j.name.length) : j.source;
+    return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(where)}</div>${j.output && j.output !== j.source ? `<div class="dir">→ ${esc(j.output)}</div>` : ""}</td>
+      <td><span class="state s-${j.state}">${j.state}</span><div class="note">${esc(j.message)}</div></td>
+      <td class="size">${size}</td><td class="note">${esc(when(j.finished_at))}</td></tr>`;
+  }).join("") || `<tr><td colspan="4" class="empty">Nothing here yet.</td></tr>`;
+  $(k + "HistStats").innerHTML = `<span class="chip">${h.total} job${h.total === 1 ? "" : "s"}</span>`;
+  const more_ = h.items.length < h.total;
+  let wrap = box.querySelector(".more");
+  if (!wrap) { wrap = document.createElement("div"); wrap.className = "more"; box.appendChild(wrap); }
+  wrap.innerHTML = more_ ? `<button data-hist-more="${k}">Show more (${h.total - h.items.length} left)</button>` : "";
+}
+for (const k of ["cv", "dl"]) {
+  $(k + "Hist").addEventListener("toggle", () => loadHistory(k));
+  $(k + "HistRefresh").onclick = () => loadHistory(k);
+  $(k + "HistState").onchange = () => loadHistory(k);
+  $(k + "HistAll").onchange = () => loadHistory(k);
+  $(k + "Hist").addEventListener("click", e => { if (e.target.closest("[data-hist-more]")) loadHistory(k, true); });
+}
+// An open history reloads when one of the queue's jobs finishes.
+function historyTick(st) {
+  for (const [k, jobs] of [["cv", st.jobs], ["dl", st.downloads]]) {
+    const done = (jobs || []).filter(j => !["queued", "running"].includes(j.state)).map(j => `${j.id}:${j.finished_at}`).join(",");
+    if (hist[k].seen !== null && done !== hist[k].seen) loadHistory(k);
+    hist[k].seen = done;
+  }
+  for (const el of document.querySelectorAll(".hist .seeall")) el.hidden = perms === null || !has("jobs.see_all");
+}
+
 function render(st) {
   accountsOn = "account" in st;
   if (!defaultsSet) {
@@ -781,6 +884,7 @@ function render(st) {
   }
   renderConvert(st);
   renderDownloads(st);
+  historyTick(st);
   renderAccount(st.account);
   applyPerms(st.account ? st.account.perms : accountsOn ? GUEST_PERMS : null);
   renderAdmin(st);
@@ -788,6 +892,21 @@ function render(st) {
 }
 
 /* ---------- admin ---------- */
+let auditItems = [];
+async function loadAudit(more = false) {
+  if ($("admAuditBox").hidden) return;
+  try {
+    const r = await api(`/api/admin/audit?limit=100&offset=${more ? auditItems.length : 0}`);
+    auditItems = more ? auditItems.concat(r.items) : r.items;
+    $("admAudit").innerHTML = auditItems.map(a => `<tr><td class="note">${esc(new Date(a.at * 1000).toLocaleString())}</td>
+      <td>${esc(a.actor || "—")}</td><td>${esc(a.action)}</td><td>${esc(a.target)}</td><td class="note" title="${esc(a.detail)}">${esc(a.detail)}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="empty">Nothing recorded yet.</td></tr>`;
+    $("auditMore").innerHTML = auditItems.length < r.total ? `<button class="small" id="auditMoreBtn">Show more (${r.total - auditItems.length} left)</button>` : "";
+    say($("admAuditMsg"), "");
+  } catch (e) { say($("admAuditMsg"), e.message, true); }
+}
+$("auditRefresh").onclick = () => loadAudit();
+$("auditMore").onclick = e => { if (e.target.closest("#auditMoreBtn")) loadAudit(true); };
 let admUsers = "", admRoles = "";
 function renderAdmin(st) {
   const users = st.admin_users || [], roles = st.admin_roles || [], perm = st.permissions || [];
@@ -851,7 +970,7 @@ $("admLibs").onchange = async e => {
   c.blur();
 };
 async function admin(action, body, msgEl) {
-  try { const r = await api("/api/admin/" + action, body); refresh(); return r; }
+  try { const r = await api("/api/admin/" + action, body); refresh(); loadAudit(); return r; }
   catch (e) { say(msgEl, e.message, true); admUsers = admRoles = admLibs = ""; refresh(); throw e; }
 }
 $("admUsers").onchange = async e => {
@@ -963,7 +1082,30 @@ function renderAccount(a) {
   $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)}<br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
     <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
 }
-$("acctBtn").onclick = () => { say($("pwMsg"), ""); say($("tokenMsg"), ""); $("tokenShow").hidden = true; $("acctDlg").showModal(); };
+$("acctBtn").onclick = () => { say($("pwMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); $("tokenShow").hidden = true; loadSessions(); $("acctDlg").showModal(); };
+// A short description of a browser from its User-Agent, such as "Chrome on Windows".
+function browserName(ua) {
+  if (!ua) return "Unknown browser";
+  const b = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "A browser";
+  const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS"
+    : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? `${b} on ${os}` : b;
+}
+async function loadSessions() {
+  try {
+    const list = await api("/api/account/sessions");
+    $("sessionList").innerHTML = list.map(x => `<li><span title="${esc(x.user_agent)}">${esc(browserName(x.user_agent))}${x.current ? ' <span class="note">(this browser)</span>' : ""}<br>
+      <span class="note">signed in ${new Date(x.created_at * 1000).toLocaleString()}, last used ${new Date(x.last_seen * 1000).toLocaleString()}</span></span>
+      ${x.current ? "" : `<button class="small" data-session="${esc(x.id)}">Sign out</button>`}</li>`).join("") || `<li class="note">No sessions.</li>`;
+  } catch (e) { say($("sessionMsg"), e.message, true); }
+}
+$("sessionList").onclick = async e => {
+  const b = e.target.closest("[data-session]");
+  if (!b) return;
+  try { await api("/api/account/session-revoke", { id: b.dataset.session }); say($("sessionMsg"), "Signed out."); loadSessions(); }
+  catch (err) { say($("sessionMsg"), err.message, true); }
+};
 $("signIn").onclick = () => { location.href = "/login"; };
 $("acctClose").onclick = () => $("acctDlg").close();
 $("pwForm").onsubmit = async e => {

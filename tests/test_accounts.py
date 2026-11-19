@@ -175,7 +175,9 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(acc.library_rules(), {})  # every library open, as before
 
 
-class SignInHttpTests(unittest.TestCase):
+class SignInBase(unittest.TestCase):
+    """A harbor with accounts Ann (admin) and Bo (member) and a one-book library."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
@@ -221,6 +223,8 @@ class SignInHttpTests(unittest.TestCase):
         self.assertEqual(status, 200, d)
         return h["Set-Cookie"].split(";")[0].split("=", 1)[1]
 
+
+class SignInHttpTests(SignInBase):
     def test_signed_out_can_read_the_library_and_nothing_else(self):
         for path in ("/", "/library", "/login"):
             self.assertEqual(self.req("GET", path)[0], 200, path)
@@ -399,6 +403,93 @@ class SignInHttpTests(unittest.TestCase):
         self.assertEqual(A.AccountAPI(empty).get("status", {})[2], b'{"accounts": false, "signed_in": false}')
 
 
+class SessionsAndAuditTests(SignInBase):
+    """Your signed-in browsers, and the audit log."""
+
+    def login_as(self, name="Ann", agent="Mozilla/5.0 (Windows NT 10.0) Chrome/130.0"):
+        status, h, d = self.req(
+            "POST", "/api/account/login", {"name": name, "password": PW}, headers={"User-Agent": agent}
+        )
+        self.assertEqual(status, 200, d)
+        return h["Set-Cookie"].split(";")[0].split("=", 1)[1]
+
+    def test_sessions_list_and_sign_out_one(self):
+        here = self.login_as()
+        other = self.login_as(agent="Mozilla/5.0 (Android 14) Firefox/131.0")
+        status, _, sessions = self.req("GET", "/api/account/sessions", cookie=here)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(sessions), 2)
+        mine = [x for x in sessions if x["current"]]
+        self.assertEqual(len(mine), 1)
+        self.assertIn("Chrome", mine[0]["user_agent"])
+        theirs = next(x for x in sessions if not x["current"])
+        self.assertNotIn(theirs["id"], (here, other))  # a piece of the hash, not the session id
+        self.assertEqual(len(theirs["id"]), A.SESSION_HANDLE)
+        self.assertEqual(
+            self.req("POST", "/api/account/session-revoke", {"id": theirs["id"]}, cookie=here)[2],
+            {"ok": True},
+        )
+        self.assertEqual(self.req("GET", "/api/account/sessions", cookie=other)[0], 401)  # signed out
+        self.assertEqual(len(self.req("GET", "/api/account/sessions", cookie=here)[2]), 1)
+        self.assertEqual(self.req("POST", "/api/account/session-revoke", {"id": "../x"}, cookie=here)[0], 400)
+        # someone else's session can't be signed out by its handle
+        bo = self.login_as("Bo")
+        bo_handle = self.req("GET", "/api/account/sessions", cookie=bo)[2][0]["id"]
+        self.assertEqual(
+            self.req("POST", "/api/account/session-revoke", {"id": bo_handle}, cookie=here)[2], {"ok": False}
+        )
+        self.assertEqual(self.req("GET", "/api/account/sessions", cookie=bo)[0], 200)
+        # a token can't list sessions
+        _, token = self.acc.create_token(self.ann["id"], "ext")
+        self.assertEqual(self.req("GET", "/api/account/sessions", headers={A.TOKEN_HEADER: token})[0], 403)
+        self.assertEqual(self.req("GET", "/api/account/sessions")[0], 401)
+
+    def test_audit_log_records_events_without_secrets(self):
+        self.assertEqual(
+            self.req("POST", "/api/account/login", {"name": "Bo", "password": "wrong one!"})[0], 401
+        )
+        sid = self.login_as()
+        self.req("POST", "/api/admin/user-add", {"name": "Cy", "password": PW, "role_id": 3}, cookie=sid)
+        status, _, tok = self.req("POST", "/api/account/token-create", {"label": "laptop"}, cookie=sid)
+        self.req("POST", "/api/account/password", {"current": PW, "new": "new pass word"}, cookie=sid)
+        (self.dir / "More").mkdir()
+        self.assertEqual(self.req("POST", "/api/library/add-library", {"name": "Manga"}, cookie=sid)[0], 200)
+        self.assertEqual(
+            self.req("POST", "/api/library/add-root", {"path": str(self.dir / "More")}, cookie=sid)[0], 200
+        )
+        status, _, log = self.req("GET", "/api/admin/audit", cookie=sid)
+        self.assertEqual(status, 200)
+        got = [(x["actor"], x["action"], x["target"]) for x in reversed(log["items"])]
+        self.assertEqual(
+            got,
+            [
+                ("", "sign-in failed", "Bo"),
+                ("Ann", "sign-in", "Ann"),
+                ("Ann", "user added", "Cy"),
+                ("Ann", "token created", "Ann"),
+                ("Ann", "password changed", "Ann"),
+                ("Ann", "library added", "Manga"),
+                ("Ann", "library folder added", str(self.dir / "More")),
+            ],
+        )
+        everything = json.dumps(log)
+        for secret in (PW, "wrong one!", "new pass word", sid, tok["token"]):
+            self.assertNotIn(secret, everything)
+        bo = self.login_as("Bo")
+        self.assertEqual(self.req("GET", "/api/admin/audit", cookie=bo)[0], 403)  # needs users.manage
+        self.assertEqual(self.req("GET", "/api/admin/audit")[0], 401)
+
+    def test_audit_log_is_pruned(self):
+        self.acc.audit_days = 1
+        with self.acc._lock:
+            self.acc._db.execute(
+                "INSERT INTO audit(at, action) VALUES (?, 'old')", (time.time() - 3 * 86400,)
+            )
+        self.acc._audit_pruned = 0
+        self.acc.audit("new")
+        self.assertEqual([x["action"] for x in self.acc.audit_log()["items"]], ["new"])
+
+
 class UserCliTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -435,6 +526,17 @@ class UserCliTests(unittest.TestCase):
         acc = A.Accounts(Path(self.tmp.name) / "h.db")
         self.addCleanup(acc.close)
         self.assertEqual(acc.login("Ann", PW)[0]["name"], "Ann")
+        log = [(x["actor"], x["action"], x["target"]) for x in reversed(acc.audit_log()["items"])]
+        self.assertEqual(
+            log,
+            [
+                ("command line", "user added", "Ann"),
+                ("command line", "user added", "Bo"),
+                ("command line", "user disabled", "Bo"),
+                ("command line", "password reset", "Bo"),
+                ("command line", "user removed", "Bo"),
+            ],
+        )
 
 
 if __name__ == "__main__":

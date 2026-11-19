@@ -78,7 +78,24 @@ MIGRATIONS: list[str] = [
     # and guests. roles_json NULL is every role too; a list names the only roles (Admin always sees all).
     """CREATE TABLE library_access (
            library_id INTEGER PRIMARY KEY, roles_json TEXT, guests INTEGER NOT NULL DEFAULT 1)""",
+    # 4: the browser each session signed in from (shown in Your account), and the audit log of
+    # account and admin events. ``actor`` is a name, kept when the account is removed.
+    """ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT '';
+       CREATE TABLE audit (
+           id INTEGER PRIMARY KEY, at REAL NOT NULL, actor_id INTEGER, actor TEXT NOT NULL DEFAULT '',
+           action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '');
+       CREATE INDEX audit_at ON audit(at)""",
 ]
+AUDIT_DAY = 86400
+SESSION_HANDLE = 16  # hex characters of a session's id hash shown to its owner, to sign it out
+_req = threading.local()  # per request thread: the browser's User-Agent, set by HarborSignIn.user
+
+
+def request_agent() -> str:
+    """The User-Agent of the request being handled (trimmed), or ''."""
+    return getattr(_req, "agent", "")
+
+
 ADMIN_ROLE, MEMBER_ROLE = 1, 2
 
 # Every permission, in the order the admin page shows them. Admin always has all of them.
@@ -180,7 +197,9 @@ class LockedOut(Exception):
 
 
 class Accounts:
-    def __init__(self, db_path: str | Path, session_days: int = 30, secure_cookie: bool = False):
+    def __init__(
+        self, db_path: str | Path, session_days: int = 30, secure_cookie: bool = False, audit_days: int = 365
+    ):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.session_seconds = int(session_days) * 86400
@@ -205,6 +224,8 @@ class Accounts:
             pass
         self._failures: dict[str, list[float]] = {}
         self._rules: dict[int, dict] | None = None  # library_access, read once, dropped on change
+        self.audit_days = audit_days
+        self._audit_pruned = 0.0
 
     def close(self) -> None:
         with self._lock:
@@ -487,7 +508,7 @@ class Accounts:
         if len(recent) >= LOCK_AFTER:
             raise LockedOut(int(LOCK_WINDOW - (now - recent[0])))
 
-    def login(self, name: str, password: str) -> tuple[dict, str]:
+    def login(self, name: str, password: str, user_agent: str = "") -> tuple[dict, str]:
         """Check a name and password; returns (user, new session id). Raises ValueError or LockedOut."""
         key, now = str(name or "").strip().lower(), time.time()
         with self._lock:
@@ -504,9 +525,9 @@ class Accounts:
             sid = secrets.token_urlsafe(32)
             self._db.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
             self._db.execute(
-                "INSERT INTO sessions(id_hash, user_id, created_at, last_seen, expires_at)"
-                " VALUES (?,?,?,?,?)",
-                (_sha(sid), row["id"], now, now, now + self.session_seconds),
+                "INSERT INTO sessions(id_hash, user_id, created_at, last_seen, expires_at, user_agent)"
+                " VALUES (?,?,?,?,?,?)",
+                (_sha(sid), row["id"], now, now, now + self.session_seconds, str(user_agent or "")[:200]),
             )
         return self._public(row), sid
 
@@ -546,6 +567,65 @@ class Accounts:
                 (now, now + self.session_seconds, _sha(sid)),
             )
         return self._public(rows[0])
+
+    def sessions(self, user_id: int, current: str = "") -> list[dict]:
+        """A user's signed-in browsers, newest use first. ``id`` is a short piece of the session id's
+        hash, enough to sign that session out and useless for signing in."""
+        cur = _sha(current)[:SESSION_HANDLE] if current else ""
+        rows = self._q(
+            """SELECT id_hash, created_at, last_seen, user_agent FROM sessions
+               WHERE user_id = ? AND expires_at > ? ORDER BY last_seen DESC""",
+            (int(user_id), time.time()),
+        )
+        return [
+            {
+                "id": r["id_hash"][:SESSION_HANDLE],
+                "created_at": r["created_at"],
+                "last_seen": r["last_seen"],
+                "user_agent": r["user_agent"],
+                "current": r["id_hash"][:SESSION_HANDLE] == cur,
+            }
+            for r in rows
+        ]
+
+    def revoke_session(self, user_id: int, handle: str) -> bool:
+        handle = str(handle or "")
+        if len(handle) != SESSION_HANDLE or any(c not in "0123456789abcdef" for c in handle):
+            raise ValueError("unknown session")
+        return bool(
+            self._x(
+                "DELETE FROM sessions WHERE user_id = ? AND substr(id_hash, 1, ?) = ?",
+                (int(user_id), SESSION_HANDLE, handle),
+            )
+        )
+
+    # ------------------------------------------------------------ audit log
+    def audit(self, action: str, target: str = "", detail: str = "", actor=None) -> None:
+        """Record an account or admin event. ``actor`` is a user dict, a label (such as "command
+        line"), or None for someone not signed in. Never pass a password, session id or token."""
+        if isinstance(actor, dict):
+            actor_id, actor_name = actor.get("id"), actor.get("name", "")
+        else:
+            actor_id, actor_name = None, str(actor or "")
+        now = time.time()
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO audit(at, actor_id, actor, action, target, detail) VALUES (?,?,?,?,?,?)",
+                (now, actor_id, actor_name[:80], action, str(target)[:200], str(detail)[:500]),
+            )
+            if self.audit_days and now - self._audit_pruned > AUDIT_DAY:
+                self._audit_pruned = now
+                self._db.execute("DELETE FROM audit WHERE at < ?", (now - self.audit_days * AUDIT_DAY,))
+
+    def audit_log(self, limit: int = 100, offset: int = 0, action: str = "") -> dict:
+        where, args = ("action = ?", [action]) if action else ("1=1", [])
+        limit, offset = max(1, min(int(limit), 500)), max(0, int(offset))
+        rows = self._q(
+            f"SELECT * FROM audit WHERE {where} ORDER BY at DESC, id DESC LIMIT ? OFFSET ?",
+            (*args, limit, offset),
+        )
+        total = self._q(f"SELECT count(*) FROM audit WHERE {where}", args)[0][0]
+        return {"items": [dict(r) for r in rows], "total": total}
 
     # ------------------------------------------------------------ extension tokens
     def create_token(self, user_id: int, label: str) -> tuple[dict, str]:
@@ -620,6 +700,7 @@ class HarborSignIn:
         return may_browse_folders(user) if path == "/api/dirs" else True
 
     def user(self, headers) -> dict | None:
+        _req.agent = (headers.get("User-Agent", "") if headers else "")[:200]
         token = headers.get(TOKEN_HEADER, "") if headers else ""
         origin = headers.get("Origin", "") if headers else ""
         self._request.machine = bool(token) or origin.startswith("chrome-extension://")
@@ -660,39 +741,63 @@ class AccountAPI:
         }
 
     def get(self, action: str, query: dict):
+        def out(status, obj):
+            return status, {"Content-Type": "application/json"}, json.dumps(obj).encode()
+
+        me = self._me()
         if action == "status":  # public: what the sign-in page needs to know
-            me = self._me()
-            body = {"accounts": self.accounts.count() > 0, "signed_in": bool(me)}
-            return 200, {"Content-Type": "application/json"}, json.dumps(body).encode()
-        return 404, {"Content-Type": "application/json"}, b'{"error": "not found"}'
+            return out(200, {"accounts": self.accounts.count() > 0, "signed_in": bool(me)})
+        if action == "sessions":
+            if not me:
+                return out(401, {"error": "sign in first"})
+            if not me.get("_sid"):
+                return out(403, {"error": "sign in from the browser to see your sessions"})
+            return out(200, self.accounts.sessions(me["id"], me["_sid"]))
+        return out(404, {"error": "not found"})
 
     def post(self, action: str, body: dict):
-        me = self._me()
+        me, acc = self._me(), self.accounts
         if action == "login":
+            name = str(body.get("name", ""))
             try:
-                user, sid = self.accounts.login(str(body.get("name", "")), str(body.get("password", "")))
+                user, sid = acc.login(name, str(body.get("password", "")), request_agent())
             except LockedOut as e:
+                acc.audit("sign-in refused", name[:80], "locked after repeated wrong passwords")
                 return 429, {"error": str(e)}
             except ValueError as e:
+                acc.audit("sign-in failed", name[:80])
                 return 401, {"error": str(e)}
-            return 200, {"name": user["name"]}, {"Set-Cookie": self.accounts.cookie(sid)}
+            acc.audit("sign-in", user["name"], request_agent(), actor=user)
+            return 200, {"name": user["name"]}, {"Set-Cookie": acc.cookie(sid)}
         if not me:
             return 401, {"error": "sign in first"}
         if not me.get("_sid"):  # an extension token can't manage the account
             return 403, {"error": "sign in from the browser to change your account"}
         if action == "logout":
-            self.accounts.logout(me["_sid"])
-            return 200, {"ok": True}, {"Set-Cookie": self.accounts.cookie(None)}
+            acc.logout(me["_sid"])
+            acc.audit("sign-out", me["name"], actor=me)
+            return 200, {"ok": True}, {"Set-Cookie": acc.cookie(None)}
         if action == "password":
-            if not self.accounts.check_password(me["id"], str(body.get("current", ""))):
+            if not acc.check_password(me["id"], str(body.get("current", ""))):
+                acc.audit("password change refused", me["name"], "wrong current password", actor=me)
                 return 400, {"error": "your current password is wrong"}
-            self.accounts.set_password(me["name"], str(body.get("new", "")), keep_session=me["_sid"])
+            acc.set_password(me["name"], str(body.get("new", "")), keep_session=me["_sid"])
+            acc.audit("password changed", me["name"], "other sessions signed out", actor=me)
             return 200, {"ok": True}
         if action == "prefs":
-            return 200, self.accounts.set_prefs(me["id"], body.get("changes") or {})
+            return 200, acc.set_prefs(me["id"], body.get("changes") or {})
         if action == "token-create":
-            info, token = self.accounts.create_token(me["id"], str(body.get("label", "")))
+            info, token = acc.create_token(me["id"], str(body.get("label", "")))
+            acc.audit("token created", me["name"], info["label"], actor=me)
             return 200, {**info, "token": token}
         if action == "token-revoke":
-            return 200, {"ok": self.accounts.revoke_token(me["id"], int(body["id"]))}
+            ok = acc.revoke_token(me["id"], int(body["id"]))
+            if ok:
+                acc.audit("token revoked", me["name"], f"token {int(body['id'])}", actor=me)
+            return 200, {"ok": ok}
+        if action == "session-revoke":
+            ok = acc.revoke_session(me["id"], str(body.get("id", "")))
+            if ok:
+                acc.audit("session signed out", me["name"], actor=me)
+            return 200, {"ok": ok}
         return 404, {"error": "not found"}

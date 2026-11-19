@@ -95,6 +95,9 @@ class Settings:
     accounts_db: str = ""  # empty: accounts.default_accounts_db()
     session_days: int = 30  # how long a sign-in lasts without use
     secure_cookie: bool = False  # mark the session cookie Secure: only when harbor is behind HTTPS
+    history_db: str = ""  # empty: history.default_history_db()
+    history_days: int = 90  # finished jobs kept in the history; 0 = forever
+    audit_days: int = 365  # account and admin events kept in the audit log; 0 = forever
     source: str | None = None  # the .env file used, for the startup message
 
     def page_defaults(self) -> dict:
@@ -186,6 +189,9 @@ VARS = {
     "accounts_db": ("HARBOR_ACCOUNTS_DB", _text),
     "session_days": ("HARBOR_SESSION_DAYS", _int(1, 365)),
     "secure_cookie": ("HARBOR_SECURE_COOKIE", _bool),
+    "history_db": ("HARBOR_HISTORY_DB", _text),
+    "history_days": ("HARBOR_HISTORY_DAYS", _int(0, 3650)),
+    "audit_days": ("HARBOR_AUDIT_DAYS", _int(0, 3650)),
 }
 
 

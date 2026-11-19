@@ -25,6 +25,7 @@ from cbzshelf.library import Library
 
 from .accounts import Accounts, default_accounts_db
 from .config import ConfigError, load_settings
+from .history import History, default_history_db
 from .perms import JobOwners
 from .state import QueueStore, default_state_file
 
@@ -97,6 +98,9 @@ def _read_password(from_stdin: bool) -> str:
     return first
 
 
+CLI = "command line"  # the audit log's actor for `harbor user ...`
+
+
 def _path(setting: str, default: Path) -> Path:
     """A path setting, or ``default`` when it is empty."""
     return Path(setting).expanduser() if setting else default
@@ -105,7 +109,9 @@ def _path(setting: str, default: Path) -> Path:
 def cmd_user(args) -> int:
     try:
         settings = load_settings({}, args.env_file)
-        accounts = Accounts(_path(settings.accounts_db, default_accounts_db()))
+        accounts = Accounts(
+            _path(settings.accounts_db, default_accounts_db()), audit_days=settings.audit_days
+        )
     except (ConfigError, OSError, sqlite3.Error) as e:
         print(f"harbor: {e}", file=sys.stderr)
         return 2
@@ -117,12 +123,14 @@ def cmd_user(args) -> int:
                 accounts.role(args.role)  # unknown role: fail before asking for a password
             password = _read_password(args.password_stdin)
             user = accounts.add(args.name, password, admin=args.admin, role=args.role)
+            accounts.audit("user added", user["name"], f"role {user['role']}", actor=CLI)
             print(f"Added {user['name']} ({user['role']}).")
             if first and not user["admin"]:
                 print("Note: no admin yet. Add one with --admin to manage users later.")
         elif c == "passwd":
             accounts.get(args.name)
             accounts.set_password(args.name, _read_password(args.password_stdin))
+            accounts.audit("password reset", args.name, "signed out everywhere", actor=CLI)
             print(f"Password changed for {args.name}; signed out everywhere.")
         elif c == "list":
             for u in accounts.users():
@@ -134,13 +142,17 @@ def cmd_user(args) -> int:
                 perms = "every permission" if r["locked"] else ", ".join(r["perms"]) or "nothing"
                 print(f"{r['name']}  ({r['members']} member(s)): {perms}")
         elif c == "role":
+            before = accounts.get(args.name)["role"]
             user = accounts.set_role(args.name, args.role)
+            accounts.audit("role given", user["name"], f"{before} → {user['role']}", actor=CLI)
             print(f"{user['name']} is now {user['role']}.")
         elif c in ("disable", "enable"):
             accounts.set_disabled(args.name, c == "disable")
+            accounts.audit(f"user {c}d", args.name, actor=CLI)
             print(f"{args.name} {'disabled' if c == 'disable' else 'enabled'}.")
         elif c == "remove":
             accounts.remove(args.name)
+            accounts.audit("user removed", args.name, actor=CLI)
             print(f"Removed {args.name}.")
     except (ValueError, KeyError) as e:
         print(f"harbor: {str(e).strip(chr(39) + chr(34))}", file=sys.stderr)
@@ -177,13 +189,24 @@ def cmd_ui(args) -> int:
         return 2
     store = QueueStore(_path(settings.state_file, default_state_file()))
     owners = JobOwners()  # who queued each job, shared by the hand-off, the saved state and the API
+    try:
+        history = History(_path(settings.history_db, default_history_db()), settings.history_days, owners)
+    except (OSError, sqlite3.Error) as e:
+        print(f"harbor: cannot open the history database: {e}", file=sys.stderr)
+        library.close()
+        return 2
+
+    def changed(job) -> None:
+        store.on_change(job)
+        history.on_change(job)
+
     cq, dq = build(
         owners=owners,
         jobs=settings.jobs,
         image_threads=settings.threads,
         downloads=settings.downloads,
         retries=settings.retries,
-        on_change=store.on_change,
+        on_change=changed,
         on_convert_change=make_library_hook(library),
         on_download_kept=make_library_file_hook(library),
     )
@@ -194,8 +217,10 @@ def cmd_ui(args) -> int:
         if save:
             store.save()  # first: shutting down marks running jobs cancelled
         store.enabled = False  # no save from here on
+        history.enabled = False  # jobs cancelled by the shutdown are restored, not finished
         dq.shutdown()  # before the converter, so no download hands it a new job
         cq.shutdown()
+        history.close()
         library.close()  # last: a finishing conversion may still add a book
 
     accounts = None
@@ -205,6 +230,7 @@ def cmd_ui(args) -> int:
                 _path(settings.accounts_db, default_accounts_db()),
                 settings.session_days,
                 settings.secure_cookie,
+                settings.audit_days,
             )
         except (OSError, sqlite3.Error) as e:
             print(f"harbor: cannot open the accounts database: {e}", file=sys.stderr)
@@ -219,7 +245,7 @@ def cmd_ui(args) -> int:
                 f"harbor: gave {moved} reading record(s) from before accounts to {admin['name']}", flush=True
             )
     try:
-        server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts, owners)
+        server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts, owners, history)
     except OSError as e:
         print(f"harbor: cannot listen on 127.0.0.1:{settings.port}: {e}", file=sys.stderr)
         close_all(save=False)  # keep the saved jobs for the next start
