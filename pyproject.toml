@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = [
   "cbz-webp @ git+https://github.com/syahmizainudin/cbz-webp@v0.5.0",
   "dl-queue @ git+https://github.com/syahmizainudin/dl-queue@v0.5.0",
-  "cbz-shelf @ git+https://github.com/syahmizainudin/cbz-shelf@v0.5.1",
+  "cbz-shelf @ git+https://github.com/syahmizainudin/cbz-shelf@v0.5.2",
 ]
 
 [project.scripts]
