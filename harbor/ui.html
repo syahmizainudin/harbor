@@ -282,6 +282,7 @@
         <select id="preset" title="Fill in the folder, API key mode and convert settings from a saved set"><option value="">None</option></select>
         <button class="small" id="presetSave" type="button">Save as preset…</button>
         <button class="small" id="presetDelete" type="button" hidden>Delete</button>
+        <span id="laneBox" hidden><label for="dlLane" style="margin:0 6px 0 0;display:inline">Lane</label><select id="dlLane" title="Download lanes have their own downloads at once, speed limit and hours (set on the Admin page)"><option value="">Default</option></select></span>
       </div>
 
       <div class="grid">
@@ -399,6 +400,21 @@
       </table>
       <div class="more" id="auditMore"></div>
       <div class="msg" id="admAuditMsg"></div>
+    </section>
+    <section class="panel" id="admLanesBox" hidden>
+      <div class="bar-head"><strong>Download lanes</strong><span class="note">Each lane runs its own downloads at once, with its own speed limit and hours. The overall speed limit still covers every download, and a lane without hours follows the Download hours. Changes apply at once.</span></div>
+      <table>
+        <thead><tr><th>Lane</th><th>At once</th><th>Speed limit</th><th>Hours</th><th>Now</th><th></th></tr></thead>
+        <tbody id="admLanes"></tbody>
+      </table>
+      <form class="adm-form" id="admLaneForm" autocomplete="off">
+        <input type="text" id="alName" placeholder="Lane name (same name edits it)" maxlength="40" aria-label="Lane name">
+        <input type="number" id="alWorkers" min="1" max="16" value="1" aria-label="Downloads at once" title="Downloads at once" style="max-width:90px">
+        <input type="text" id="alRate" placeholder="Speed limit, e.g. 5M (empty: none)" aria-label="Speed limit">
+        <input type="text" id="alHours" placeholder="Hours, e.g. 01:00-07:00 (empty: Download's)" aria-label="Hours">
+        <button class="primary">Save lane</button>
+      </form>
+      <div class="msg" id="admLanesMsg"></div>
     </section>
     <section class="panel" id="admSeriesBox" hidden>
       <div class="bar-head"><strong>Series</strong>
@@ -546,7 +562,7 @@ const TAB_NEEDS = {
   convert: () => has("convert"),
   download: () => has("download"),
   library: () => has("library.read"),
-  admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit")),
+  admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit") || has("download.lanes")),
 };
 function applyPerms(next) {
   next = next ?? null;
@@ -567,6 +583,7 @@ function applyPerms(next) {
   admAllowed.roles = (has("users.manage") || has("roles.manage")) && perms !== null;
   admAllowed.series = has("library.edit") && perms !== null;
   admAllowed.audit = has("users.manage") && perms !== null;
+  admAllowed.lanes = has("download.lanes") && perms !== null;
   renderAdminTabs();
   if (!$("pane-admin").hidden) { loadAdminSeries(); loadAudit(); }
 }
@@ -757,6 +774,9 @@ $("preset").onchange = () => {
     if ("auth_mode" in p) $("authMode").value = p.auth_mode;
     if ("auth_name" in p) $("authName").value = p.auth_name;
     if ("convert" in p) $("dlConvert").checked = p.convert && has("convert");
+    const lanes = [...$("dlLane").options].map(o => o.value);
+    $("dlLane").value = lanes.includes(p.lane || "") ? p.lane || "" : "";
+    if (p.lane && !lanes.includes(p.lane)) say($("dlMsg"), `The preset's lane “${p.lane}” no longer exists: downloads use the default lane.`, true);
     authUI();
   }
   convertNote();
@@ -780,6 +800,7 @@ $("presetSave").onclick = async () => {
   if (!same && presets.length >= 20) return say($("dlMsg"), "You can keep up to 20 presets. Delete one first.", true);
   const a = downloadAfter();
   const p = { name, download_dir: $("dest").value.trim(), auth_mode: $("authMode").value, auth_name: $("authName").value.trim(), convert: a.convert, method: a.method, delete_original: a.delete_original };
+  if ($("dlLane").value) p.lane = $("dlLane").value;
   if (a.quality >= 1 && a.quality <= 100) p.quality = a.quality;
   const list = presets.filter(x => x !== same).concat(p).sort((x, y) => x.name.localeCompare(y.name));
   if (await savePresets(list, name)) say($("dlMsg"), `Saved the preset “${name}”.`);
@@ -816,6 +837,7 @@ $("dlAdd").onclick = async () => {
       urls, dest,
       after: downloadAfter(),
       auth: { mode, key: $("apiKey").value, name: $("authName").value.trim() },
+      lane: $("dlLane").value,
     });
     if (!activePreset) {  // a preset's folder is for this download, not the new default
       store.set("dest", dest);
@@ -885,7 +907,18 @@ function renderConvert(st) {
   }).join(""));
 }
 
+let laneNames = null;
+function renderLanes(lanes) {
+  const names = JSON.stringify(lanes.map(l => l.name));
+  if (names === laneNames) return;
+  laneNames = names;
+  const keep = $("dlLane").value;
+  $("dlLane").innerHTML = `<option value="">Default</option>` + lanes.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join("");
+  $("dlLane").value = lanes.some(l => l.name === keep) ? keep : "";
+  $("laneBox").hidden = !lanes.length;
+}
 function renderDownloads(st) {
+  renderLanes(st.download_lanes || []);
   dlPaused = st.downloads_paused;
   $("dlPause").textContent = dlPaused ? "Resume" : "Pause";
   const jobs = st.downloads, c = counts(jobs);
@@ -895,6 +928,8 @@ function renderDownloads(st) {
   chips.push(`<span class="chip">${st.download_workers} download(s) at a time${dlPaused ? " · <b>paused</b>" : ""}</span>`);
   if (st.download_rate) chips.push(`<span class="chip">limit <b>${fmt(st.download_rate)}/s</b></span>`);
   if (st.download_hours) chips.push(`<span class="chip" title="New downloads start only in these hours">${st.download_waiting ? `<b>waiting until ${esc(st.download_hours.split("-")[0])}</b>` : `hours ${esc(st.download_hours)}`}</span>`);
+  for (const l of st.download_lanes || [])
+    chips.push(`<span class="chip" title="Lane: ${l.workers} at once${l.rate ? ", " + fmt(l.rate) + "/s" : ""}${l.hours ? ", hours " + esc(l.hours) : ""}">${esc(l.name)} <b>${l.running}/${l.workers}</b>${l.queued ? ` +${l.queued}` : ""}${l.waiting ? " · waiting" : ""}</span>`);
   setHTML($("dlStats"), chips.join(""));
   setText($("badge-download"), (c.queued || 0) + (c.running || 0) || "");
 
@@ -916,7 +951,8 @@ function renderDownloads(st) {
         ? `<div class="note">convert: <span class="state s-${cj.state}">${cj.state}</span> ${cj.state === "running" ? `${cj.done}/${cj.total}` : esc(cj.message)} <button class="link" data-act="goto">view</button></div>`
         : `<div class="note">convert job cleared</div>`;
     }
-    const auth = j.auth_mode !== "none" ? ` <span class="note">· key: ${esc(j.auth_mode)}</span>` : "";
+    const auth = (j.auth_mode !== "none" ? ` <span class="note">· key: ${esc(j.auth_mode)}</span>` : "") +
+      (j.lane ? ` <span class="note">· lane: ${esc(j.lane)}</span>` : "");
     return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(j.url)}</div><div class="dir">→ ${esc(j.dest_dir)}${auth}</div></td>
       <td><span class="state s-${j.state}">${j.state}</span>${prog}</td>
       <td class="size">${size}</td><td>${det}</td><td>${actionBtn(j)}</td></tr>`;
@@ -997,8 +1033,9 @@ const ADMIN_SECTIONS = [
   ["libs", "admLibsBox", "Library access"],
   ["audit", "admAuditBox", "Audit log"],
   ["series", "admSeriesBox", "Series"],
+  ["lanes", "admLanesBox", "Download lanes"],
 ];
-const admAllowed = { users: false, roles: false, libs: false, audit: false, series: false };
+const admAllowed = { users: false, roles: false, libs: false, audit: false, series: false, lanes: false };
 let admTab = store.get("adminTab", "");
 function renderAdminTabs() {
   const offered = ADMIN_SECTIONS.filter(([key]) => admAllowed[key]);
@@ -1064,7 +1101,58 @@ function renderAdmin(st) {
   }
   window._admRoles = roles;
   renderAdminLibraries(st.admin_libraries, roles);
+  renderAdminLanes(st.admin_lanes, st.download_lanes || []);
 }
+
+/* ---------- admin: download lanes ---------- */
+// Speeds are bytes a second; the form takes dl-queue's sizes ("500K", "5M").
+function rateText(n) {
+  if (!n) return "";
+  for (const [u, f] of [["G", 1024 ** 3], ["M", 1024 ** 2], ["K", 1024]]) if (n % f === 0) return n / f + u;
+  return String(n);
+}
+let admLanes = "";
+function renderAdminLanes(lanes, live) {
+  if (!lanes) return;
+  const key = JSON.stringify([lanes, live]);
+  if (key === admLanes || $("admLanes").contains(document.activeElement)) return;
+  admLanes = key;
+  const now = Object.fromEntries(live.map(x => [x.name, x]));
+  setHTML($("admLanes"), lanes.map(l => {
+    const n = now[l.name];
+    const state = n ? `${n.running} running, ${n.queued} queued${n.waiting ? " · <b>waiting</b>" : ""}` : "";
+    return `<tr><td>${esc(l.name)}</td><td>${l.workers}</td><td>${l.rate ? fmt(l.rate) + "/s" : '<span class="note">none of its own</span>'}</td>
+      <td>${l.hours ? esc(l.hours) : '<span class="note">as Download</span>'}</td><td class="note">${state}</td>
+      <td class="actions"><button class="small" data-lane-edit="${esc(l.name)}">Edit</button> <button class="small" data-lane-rm="${esc(l.name)}">Remove</button></td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="empty">No lanes yet: every download uses the Download settings.</td></tr>`);
+  window._admLaneList = lanes;
+}
+$("admLaneForm").onsubmit = async e => {
+  e.preventDefault();
+  const body = { name: $("alName").value.trim(), workers: parseInt($("alWorkers").value, 10), rate: $("alRate").value.trim(), hours: $("alHours").value.trim() };
+  if (!body.name) return say($("admLanesMsg"), "Give the lane a name.", true);
+  try {
+    await api("/api/admin/lane-set", body);
+    say($("admLanesMsg"), `Saved the lane “${body.name}”. It applies now.`);
+    $("admLaneForm").reset();
+    refresh();
+  } catch (err) { say($("admLanesMsg"), err.message, true); }
+};
+$("admLanes").onclick = async e => {
+  const ed = e.target.closest("[data-lane-edit]"), rm = e.target.closest("[data-lane-rm]");
+  if (ed) {
+    const l = (window._admLaneList || []).find(x => x.name === ed.dataset.laneEdit);
+    if (!l) return;
+    $("alName").value = l.name; $("alWorkers").value = l.workers; $("alRate").value = rateText(l.rate); $("alHours").value = l.hours;
+    $("alName").focus();
+  }
+  if (rm) {
+    const name = rm.dataset.laneRm;
+    if (!confirm(`Remove the lane “${name}”? Its queued downloads run with the Download settings instead.`)) return;
+    try { await api("/api/admin/lane-remove", { name }); say($("admLanesMsg"), `Removed the lane “${name}”.`); refresh(); }
+    catch (err) { say($("admLanesMsg"), err.message, true); }
+  }
+};
 let admLibs = "";
 function renderAdminLibraries(libs, roles) {
   if (admAllowed.libs !== !!libs) { admAllowed.libs = !!libs; renderAdminTabs(); }

@@ -409,7 +409,7 @@ class SignInHttpTests(SignInBase):
             "method": 4,
             "delete_original": True,
         }
-        books = {"name": "Books", "download_dir": "/mnt/d/Books", "convert": False}
+        books = {"name": "Books", "download_dir": "/mnt/d/Books", "convert": False, "lane": "slow"}
         changes = {"changes": {"download_presets": [manga, books]}}
         self.assertEqual(self.req("POST", "/api/account/prefs", changes, cookie=ann)[0], 200)
         st = self.req("GET", "/api/state", cookie=ann)[2]
@@ -433,6 +433,7 @@ class SignInHttpTests(SignInBase):
             [{**manga, "quality": True}],
             [{**manga, "auth_mode": "magic"}],
             [{**manga, "download_dir": "a\nb"}],
+            [{**manga, "lane": "x" * 41}],
             [{"name": f"p{i}"} for i in range(A.PRESETS_MAX + 1)],
             {"name": "Manga"},
         ):

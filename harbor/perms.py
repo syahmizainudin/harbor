@@ -180,8 +180,10 @@ class GuardedQueueAPI:
     def state(self) -> dict:
         st = self.inner.state()
         user = current_user()
-        if user is None and self.guests:  # a guest sees no jobs (names, URLs, folders)
+        if user is None and self.guests:  # a guest sees no jobs (names, URLs, folders) or lanes
             st[self.list_key] = []
+            if "download_lanes" in st:
+                st["download_lanes"] = []
             return st
         if user is not None and self.kind == "convert" and "defaults" in st:  # their own quality and effort
             prefs = user.get("prefs", {})

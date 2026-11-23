@@ -182,6 +182,7 @@ class ConsoleTests(Base):
                 "download_rate",
                 "download_hours",
                 "download_waiting",
+                "download_lanes",
                 "harbor",
             },
         )  # the page's JS reads exactly these keys

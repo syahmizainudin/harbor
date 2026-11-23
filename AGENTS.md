@@ -47,7 +47,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
   2. Release it there (tag `v<version>`).
   3. Bump the tag in this repo's `pyproject.toml`.
 - **The page is harbor's own.** It is the union of the two tools' pages: the Convert tab is `cbzwebp/ui.html`'s body and the Download tab is `dlqueue/ui.html`'s, plus the tabs and the "Convert downloads" option. When either tool's page changes, carry the change over here by hand.
-- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers`, `download_rate`, `download_hours`, `download_waiting` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
+- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers`, `download_rate`, `download_hours`, `download_waiting`, `download_lanes` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
 
 ## The rules of the two tools still apply
 
@@ -102,6 +102,7 @@ Downloads and conversions write and delete the user's files, and the API key is 
 ## Speed limit, quiet hours, watch folders
 
 - The limit and hours are dl-queue's (`DownloadQueue(rate=, hours=)`); harbor only validates `HARBOR_DOWNLOAD_RATE`/`_HOURS` with dl-queue's own parsers and passes them to `build`.
+- **Download lanes** are dl-queue's `Lane`s too. Harbor stores them in the accounts database (migration 7, `Accounts.lanes/set_lane/remove_lane`, checked with dl-queue's `Lane`, `parse_size` and `parse_hours`), `AdminAPI` `lane-set`/`lane-remove` need `download.lanes`, audit every change and call `dq.set_lanes(queue_lanes(accounts))` so changes are live. `cli.cmd_ui` applies them right after opening the accounts database, before restoring saved jobs. `QueueStore` saves each download's `lane`; a saved lane that's gone restores into the default lane with a note. Guests get `download_lanes: []` (`GuardedQueueAPI`). Plan: `docs/plan-download-lanes.md`.
 - Watch folders are cbz-webp's `Watcher`. `cli.cmd_ui` starts it after restoring saved jobs and stops it first in `close_all`. `HARBOR_WATCH_DELETE_ORIGINAL` is separate from `HARBOR_DELETE_ORIGINAL` and defaults to false; never tie them together. A watch folder that doesn't exist is a note on the page, not a failed start.
 - `tests/test_limits_watch.py` starts a real `harbor ui` subprocess with temp files, `HARBOR_ACCOUNTS=false` and a temp `HOME`.
 

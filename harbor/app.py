@@ -20,7 +20,7 @@ from cbzshelf.web import LibraryAPI
 from cbzwebp.core import ARCHIVE_EXTS
 from cbzwebp.jobqueue import DONE, JobQueue
 from cbzwebp.web import ConvertAPI, serve
-from dlqueue.download import Download, DownloadQueue, parse_hours
+from dlqueue.download import Download, DownloadQueue, Lane, parse_hours
 from dlqueue.web import DownloadAPI
 
 from . import __version__
@@ -183,6 +183,19 @@ class EnvKeyDownloadAPI(DownloadAPI):
             if auth.get("mode", "none") != "none" and not auth.get("key"):
                 body = {**body, "auth": {**auth, "key": self._api_key}}
         return super().post(action, body)
+
+
+def queue_lanes(accounts) -> list[Lane]:
+    """The download lanes saved on the Admin page, as dl-queue lanes (checked when saved)."""
+    out = []
+    for x in accounts.lanes():
+        try:
+            out.append(
+                Lane(x["name"], x["workers"], x["rate"], parse_hours(x["hours"]) if x["hours"] else None)
+            )
+        except ValueError as e:  # only a hand-edited database gets here
+            print(f"harbor: skipping download lane {x['name']!r}: {e}", flush=True)
+    return out
 
 
 # Settings a user's own defaults replace in the "harbor" state (quality and method go in "defaults").
@@ -400,7 +413,7 @@ def serve_harbor(
     auth = None
     if accounts is not None:
         apis["/api/account/"] = AccountAPI(accounts)
-        apis["/api/admin/"] = AdminAPI(accounts, library)
+        apis["/api/admin/"] = AdminAPI(accounts, library, download_queue)
         pages["/login"] = LOGIN_HTML
         auth = HarborSignIn(accounts)
     from .config import host_list

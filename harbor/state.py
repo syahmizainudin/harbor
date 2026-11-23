@@ -128,6 +128,7 @@ class QueueStore:
                     "auth_mode": j.auth.mode,
                     "auth_name": j.auth.name,
                     "filename": j.filename,
+                    "lane": getattr(j, "lane", ""),
                     "owner": self._owner("download", j.id),
                 }
                 for j in dq.jobs()
@@ -197,6 +198,7 @@ class QueueStore:
                 self._set_owner("convert", added, c.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:
                 notes.append(f"not restored: conversion of {c.get('path', '?')}: {e}")
+        lanes = {x.name for x in dq.lanes()}
         for d in data.get("downloads", []):
             try:
                 mode = d.get("auth_mode", "none")
@@ -208,7 +210,11 @@ class QueueStore:
                 if d.get("filename"):
                     (Path(d["dest_dir"]) / (d["filename"] + PART_SUFFIX)).unlink(missing_ok=True)
                 auth = Auth(mode, api_key if mode != "none" else "", d.get("auth_name", ""))
-                added, _ = dq.add([d["url"]], d["dest_dir"], auth, after=d.get("after") or {})
+                lane = d.get("lane") or ""
+                if lane and lane not in lanes:  # removed since: the default lane, as dl-queue does
+                    notes.append(f"{d['url']}: download lane {lane!r} is gone; queued without a lane")
+                    lane = ""
+                added, _ = dq.add([d["url"]], d["dest_dir"], auth, after=d.get("after") or {}, lane=lane)
                 restored += len(added)
                 self._set_owner("download", added, d.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:

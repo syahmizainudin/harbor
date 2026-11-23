@@ -62,6 +62,7 @@ export async function send(urls) {
     urls,
     dest,
     auth: { mode, name: (p.auth_mode ? p.auth_name : h.auth_name) || "", key: "" },
+    lane: p.lane || "",
     after: {
       convert: p.convert ?? s.convert,
       quality: p.quality ?? st.defaults?.quality ?? 80,

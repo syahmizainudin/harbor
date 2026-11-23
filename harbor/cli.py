@@ -294,6 +294,9 @@ def cmd_ui(args) -> int:
             print(f"harbor: cannot open the accounts database: {e}", file=sys.stderr)
             close_all(save=False)
             return 2
+        from .app import queue_lanes
+
+        dq.set_lanes(queue_lanes(accounts))  # before restoring saved jobs, which may name a lane
         admin = accounts.first_admin()
         if admin is None:
             print("harbor: no admin account yet. Run: harbor user add NAME --admin", flush=True)

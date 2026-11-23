@@ -90,7 +90,14 @@ MIGRATIONS: list[str] = [
     # 6: what a token is for. "extension": the Chrome extension, as before. "reader": a reader app
     # (OPDS) signing in with HTTP Basic, which may only read the library.
     """ALTER TABLE tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'extension'""",
+    # 7: download lanes (dl-queue's Lane): each its own downloads at once, speed limit (bytes a
+    # second, 0 none) and quiet hours ("HH:MM-HH:MM", '' for the queue's). Managed on the Admin page.
+    """CREATE TABLE download_lanes (
+           name TEXT PRIMARY KEY COLLATE NOCASE, workers INTEGER NOT NULL DEFAULT 1,
+           rate INTEGER NOT NULL DEFAULT 0, hours TEXT NOT NULL DEFAULT '',
+           position INTEGER NOT NULL DEFAULT 0)""",
 ]
+LANES_MAX = 20
 TOKEN_SCOPES = {"extension": "Chrome extension", "reader": "Reader app"}
 READER_PERMS = ("library.read",)  # all a reader token can do, if its account may
 AUDIT_DAY = 86400
@@ -114,6 +121,7 @@ PERMISSIONS = [
     ("library.edit", "Edit book and series details"),
     ("library.manage", "Manage library folders and scans"),
     ("jobs.see_all", "See and manage everyone's jobs"),
+    ("download.lanes", "Manage download lanes"),
     ("users.manage", "Manage users"),
     ("roles.manage", "Manage roles and permissions"),
 ]
@@ -140,6 +148,7 @@ PRESET_FIELDS = {
     "quality": _int_in(1, 100),
     "method": _int_in(0, 6),
     "delete_original": lambda v: isinstance(v, bool),
+    "lane": _text(40),
 }
 
 
@@ -453,6 +462,48 @@ class Accounts:
                 self._rules = None
 
     # ------------------------------------------------------------ library access
+    # ------------------------------------------------------------ download lanes
+    def lanes(self) -> list[dict]:
+        """Download lanes in order: name, workers, rate (bytes a second) and hours ('' for none)."""
+        return [
+            {"name": r["name"], "workers": r["workers"], "rate": r["rate"], "hours": r["hours"]}
+            for r in self._q("SELECT * FROM download_lanes ORDER BY position, lower(name)")
+        ]
+
+    def set_lane(self, name: str, workers, rate: str, hours: str) -> dict:
+        """Add a lane, or change the one with this name (any case). ``rate`` like "5M" ("" or "0":
+        no limit of its own), ``hours`` like "01:00-07:00" ("": the queue's). Checked with dl-queue's
+        own rules."""
+        from dlqueue.download import Lane, parse_hours, parse_size
+
+        rate_n = parse_size(str(rate or "0"))
+        hours = str(hours or "").strip()
+        lane = Lane(str(name), workers, rate_n, parse_hours(hours))  # raises ValueError
+        with self._lock:
+            row = self._db.execute("SELECT name FROM download_lanes WHERE name = ?", (lane.name,)).fetchone()
+            if row:
+                self._db.execute(
+                    "UPDATE download_lanes SET name = ?, workers = ?, rate = ?, hours = ? WHERE name = ?",
+                    (lane.name, lane.workers, lane.rate, hours, row["name"]),
+                )
+            else:
+                n = self._db.execute(
+                    "SELECT count(*), coalesce(max(position), 0) FROM download_lanes"
+                ).fetchone()
+                if n[0] >= LANES_MAX:
+                    raise ValueError(f"there can be at most {LANES_MAX} download lanes")
+                self._db.execute(
+                    "INSERT INTO download_lanes(name, workers, rate, hours, position) VALUES (?,?,?,?,?)",
+                    (lane.name, lane.workers, lane.rate, hours, n[1] + 1),
+                )
+        return {"name": lane.name, "workers": lane.workers, "rate": lane.rate, "hours": hours}
+
+    def remove_lane(self, name: str) -> bool:
+        with self._lock:
+            return bool(
+                self._db.execute("DELETE FROM download_lanes WHERE name = ?", (str(name).strip(),)).rowcount
+            )
+
     def library_rules(self) -> dict[int, dict]:
         """Library id -> ``{"roles": None or [role ids], "guests": bool}``, for libraries that
         aren't open to everyone. Kept in memory: it's read on every library request."""

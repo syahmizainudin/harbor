@@ -14,7 +14,7 @@ A browsable library of RPG Maker games, played in the browser, with saves kept o
 
 Download **presets** (named sets of folder, API key mode and convert settings, per account, in the page and the Chrome extension) are done; see `CHANGELOG.md`. Two other readings of "profiles" are still open:
 
-- **Separate queues:** each profile its own queue with its own workers, speed limit and quiet hours, so one site's slow downloads don't hold up another. `DownloadQueue` is one queue with one rate and hours today, so this changes dl-queue first.
+- **Separate queues:** built as **download lanes** (see [plan-download-lanes.md](plan-download-lanes.md)); waiting for the dl-queue 0.6.0 release. Follow-ups not done: per-lane pause, per-role access to lanes, per-site fairness.
 - **Site credentials:** saved sign-in details per site, picked by URL. These are secrets: anything stored must follow the API key rules (never in `/api/state`, never logged, never in a preset), so it needs its own design.
 
 ## Harbor as a skeleton with extensions

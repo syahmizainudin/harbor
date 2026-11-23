@@ -10,6 +10,9 @@ last enabled admin stays, are enforced in ``Accounts``.
 
 Library access (``roles.manage``): who may see each library. A non-admin changes it only for
 libraries they can see, and only for roles within their own permissions.
+
+Download lanes (``download.lanes``): named lanes with their own downloads at once, speed limit and
+quiet hours. A change applies to the running download queue at once.
 """
 
 from __future__ import annotations
@@ -21,12 +24,15 @@ from .accounts import ADMIN_ROLE, PERMISSIONS, Accounts, clean_perms
 DENIED = {"error": "you don't have permission for this"}
 USER_ACTIONS = {"user-add", "user-role", "user-disable", "user-password", "user-remove"}
 ROLE_ACTIONS = {"role-add", "role-update", "role-remove", "library-access"}
+LANE_ACTIONS = {"lane-set", "lane-remove"}
+LANES = "download.lanes"
 
 
 class AdminAPI:
-    def __init__(self, accounts: Accounts, library=None):
+    def __init__(self, accounts: Accounts, library=None, download_queue=None):
         self.accounts = accounts
         self.library = library
+        self.download_queue = download_queue
 
     def _libraries(self, me) -> list[dict]:
         """The libraries ``me`` can see, each with its access rule."""
@@ -54,7 +60,15 @@ class AdminAPI:
             out["permissions"] = [{"key": k, "label": label} for k, label in PERMISSIONS]
         if "roles.manage" in perms and self.library is not None:
             out["admin_libraries"] = self._libraries(me)
+        if LANES in perms:
+            out["admin_lanes"] = self.accounts.lanes()
         return out
+
+    def _apply_lanes(self) -> None:
+        if self.download_queue is not None:
+            from .app import queue_lanes
+
+            self.download_queue.set_lanes(queue_lanes(self.accounts))
 
     def get(self, action: str, query: dict):
         import json
@@ -85,6 +99,8 @@ class AdminAPI:
             return 403, DENIED
         if action in ROLE_ACTIONS and "roles.manage" not in mine:
             return 403, DENIED
+        if action in LANE_ACTIONS and LANES not in mine:
+            return 403, DENIED
         acc = self.accounts
 
         def within(perms) -> bool:
@@ -105,6 +121,25 @@ class AdminAPI:
             return role
 
         try:
+            if action == "lane-set":
+                lane = acc.set_lane(
+                    str(body.get("name", "")),
+                    body.get("workers", 1),
+                    str(body.get("rate") or ""),
+                    str(body.get("hours") or ""),
+                )
+                self._apply_lanes()
+                rate = body.get("rate") or "no own limit"
+                detail = f"{lane['workers']} at once, {rate}, {lane['hours'] or 'queue hours'}"
+                acc.audit("download lane saved", lane["name"], detail, actor=me)
+                return 200, {"lanes": acc.lanes()}
+            if action == "lane-remove":
+                name = str(body.get("name", "")).strip()
+                if not acc.remove_lane(name):
+                    return 404, {"error": f"no download lane {name!r}"}
+                self._apply_lanes()
+                acc.audit("download lane removed", name, actor=me)
+                return 200, {"lanes": acc.lanes()}
             if action == "user-add":
                 role = role_to_give()
                 user = acc.add(str(body.get("name", "")), str(body.get("password", "")), role=role["id"])

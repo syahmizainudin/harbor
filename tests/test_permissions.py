@@ -224,6 +224,70 @@ class PermissionHttpTests(HttpBase):
         self.assertEqual(hd("role-add", {"name": "X", "perms": []})[0], 403)  # no roles.manage
 
 
+class DownloadLaneTests(HttpBase):
+    """Download lanes: managed with download.lanes on the Admin page, applied live, audited."""
+
+    def test_admin_manages_lanes_live(self):
+        body = {"name": "manga", "workers": 2, "rate": "5M", "hours": "01:00-07:00"}
+        status, res = self.req("Ann", "POST", "/api/admin/lane-set", body)
+        self.assertEqual(status, 200, res)
+        self.assertEqual(
+            res["lanes"], [{"name": "manga", "workers": 2, "rate": 5 * 1024**2, "hours": "01:00-07:00"}]
+        )
+        (lane,) = self.dq.lanes()  # live, no restart
+        self.assertEqual(
+            (lane.name, lane.workers, lane.rate, lane.hours), ("manga", 2, 5 * 1024**2, (60, 420))
+        )
+        st = self.req("Ann", "GET", "/api/state")[1]
+        self.assertEqual(st["admin_lanes"][0]["name"], "manga")
+        self.assertEqual(st["download_lanes"][0]["hours"], "01:00-07:00")
+        # the same name in another case edits it
+        self.req(
+            "Ann", "POST", "/api/admin/lane-set", {"name": "MANGA", "workers": 1, "rate": "", "hours": ""}
+        )
+        (lane,) = self.dq.lanes()
+        self.assertEqual((lane.name, lane.workers, lane.rate, lane.hours), ("MANGA", 1, 0, None))
+        # a member downloads into it, sees it, but can't change it
+        dest = self.dir / "dl"
+        dest.mkdir()
+        add = {
+            "urls": ["http://127.0.0.1:9/a.zip"],
+            "dest": str(dest),
+            "lane": "MANGA",
+            "after": {"convert": False},
+        }
+        self.assertEqual(self.req("Mo", "POST", "/api/download/add", add)[0], 200)
+        self.assertEqual([d["lane"] for d in self.req("Mo", "GET", "/api/state")[1]["downloads"]], ["MANGA"])
+        mo = self.req("Mo", "GET", "/api/state")[1]
+        self.assertEqual(mo["download_lanes"][0]["name"], "MANGA")
+        self.assertNotIn("admin_lanes", mo)
+        for action, b in (("lane-set", body), ("lane-remove", {"name": "MANGA"})):
+            self.assertEqual(self.req("Mo", "POST", f"/api/admin/{action}", b)[0], 403)
+        self.assertEqual(self.req("Ann", "POST", "/api/download/add", {**add, "lane": "nope"})[0], 400)
+        for bad in (
+            {"name": "", "workers": 1},
+            {"name": "x", "workers": 0},
+            {"name": "x", "workers": "2"},
+            {"name": "x", "rate": "fast"},
+            {"name": "x", "hours": "1-7"},
+        ):
+            self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-set", bad)[0], 400, bad)
+        self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-remove", {"name": "manga"})[0], 200)
+        self.assertEqual(self.dq.lanes(), [])
+        self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-remove", {"name": "manga"})[0], 404)
+        log = [(x["action"], x["target"]) for x in self.acc.audit_log(10, 0, "")["items"]]
+        self.assertIn(("download lane saved", "manga"), log)
+        self.assertIn(("download lane removed", "manga"), log)
+
+    def test_guests_see_no_lanes(self):
+        self.req("Ann", "POST", "/api/admin/lane-set", {"name": "manga", "workers": 1})
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", "/api/state")
+        st = json.loads(conn.getresponse().read())
+        conn.close()
+        self.assertEqual(st["download_lanes"], [])
+
+
 class LibraryAccessTests(HttpBase):
     """Who sees which library: the Admin tab's matrix, enforced through cbz-shelf's ``visible``."""
 

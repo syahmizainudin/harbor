@@ -143,6 +143,24 @@ class StoreTests(unittest.TestCase):
         dq2.wait_idle()
         self.assertEqual([d.state for d in dls], ["done", "done"])
 
+    def test_restore_keeps_the_lane(self):
+        from dlqueue.download import Lane
+
+        store, cq, dq = self.start()
+        dq.set_lanes([Lane("manga"), Lane("books")])
+        dq.add([self.files_server.base + "/files/x/a.zip"], self.dir, lane="manga")
+        dq.add([self.files_server.base + "/files/x/b.zip"], self.dir, lane="books")
+        self.stop(store, cq, dq)
+        self.assertEqual([d["lane"] for d in self.saved()["downloads"]], ["manga", "books"])
+
+        store2, _cq2, dq2 = self.start()
+        dq2.set_lanes([Lane("manga")])  # "books" was removed while harbor was stopped
+        notes = store2.restore()
+        self.assertEqual([d.lane for d in dq2.jobs()], ["manga", ""])
+        self.assertTrue(
+            any("download lane 'books' is gone; queued without a lane" in n for n in notes), notes
+        )
+
     def test_running_job_comes_back_and_stale_part_is_removed(self):
         store, _cq, dq = self.start(paused=False)
         (job,), _ = dq.add([self.files_server.base + "/slow"], self.dir)

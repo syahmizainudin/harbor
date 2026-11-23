@@ -4,6 +4,9 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- **Download lanes:** named lanes, each with its own downloads at once, speed limit and hours (dl-queue 0.6.0 `Lane`). Managed live on the Admin page's new **Download lanes** tab with the new `download.lanes` permission, stored in the accounts database (migration 7) and recorded in the audit log. The Download tab gets a **Lane** menu and per-lane chips, rows show their lane, presets can remember a lane, and saved jobs keep it across restarts. Without accounts there are no lanes. `/api/state` gains `download_lanes`.
+- **Chrome extension 0.3.1:** sends a preset's lane.
+
 ## 0.2.3
 
 Pins cbz-webp 0.5.1, dl-queue 0.5.1 and cbz-shelf 0.6.0.
