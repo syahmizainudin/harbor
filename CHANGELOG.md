@@ -2,7 +2,9 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
-## Unreleased
+## 0.2.8
+
+Pins cbz-webp 0.5.1, dl-queue 0.6.2 and cbz-shelf 0.6.0, and adds cryptography.
 
 - **Saved site keys:** **Your account → Sites** saves your API keys and tokens per site (host or `*.` subdomains, optional path; Bearer, header or query parameter). **API key sent as: Saved site key (automatic)** on the Download tab, in presets and the Chrome extension picks the matching key for each download, https only, else the `.env` key. Keys are encrypted at rest (the new `cryptography` dependency; the encryption key is `secret.key` next to the accounts database), never shown again, used only for your own downloads, and picked at each try, so these downloads survive a restart. Migration 10. Audit lines for saving and removing a key. `harbor backup --with-secrets` copies `secret.key`; `harbor doctor` checks its mode.
 - **Chrome extension 0.3.2:** sends with the automatic key mode. Reload it from `chrome://extensions`.

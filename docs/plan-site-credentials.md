@@ -1,6 +1,6 @@
 # Plan: site credentials
 
-Status: built 2026-11-23 (dl-queue `auth_for`, harbor `sitekeys.py`), waiting for release. Decisions are under "Decided" at the end.
+Status: released 2026-11-23 in dl-queue 0.6.2 and harbor 0.2.8. Decisions are under "Decided" at the end.
 
 ## What was asked
 
