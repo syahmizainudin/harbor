@@ -1,6 +1,6 @@
 # Plan: site credentials
 
-Status: design, not started (2026-11-23). Four questions at the end need answers before building.
+Status: design agreed 2026-11-23, not started. Decisions are under "Decided" at the end.
 
 ## What was asked
 
@@ -27,7 +27,7 @@ Save sign-in details per site, so a download picks the right one from its URL. T
 ### Picking one for a download
 
 1. A key typed on the Download tab wins, as it does today.
-2. Otherwise the most specific saved credential whose site matches the URL. An exact host beats a wildcard, and a longer path prefix beats a shorter one. Your own credential beats a shared one.
+2. Otherwise the most specific saved credential whose site matches the URL. An exact host beats a wildcard, and a longer path prefix beats a shorter one.
 3. Otherwise the `.env` key, as today, for any mode other than `none`.
 
 Credentials are matched for each URL, so one add with links from two sites uses two credentials. The page and the Chrome extension need no change to benefit: a preset with mode "Automatic" (new) leaves the choice to harbor.
@@ -49,20 +49,22 @@ These rules are the API key rules, applied to every credential:
 ### Who has them, and where you manage them
 
 - **Your own:** a **Sites** sub-tab in the Account dialog. Anyone with `download` can manage their own, and they're used only for downloads they queue.
-- **Shared** (optional, see question 1): a **Site credentials** sub-tab on the Admin page, with a new `download.credentials` permission. Used for everyone's downloads, after their own.
 
 ## Steps
 
 1. dl-queue: the `auth_for` hook with tests, then a release.
 2. harbor: migration and storage, matching, the Account dialog's **Sites** sub-tab, restore through the hook, audit, and tests that the secret never appears in state, logs or the saved-jobs file.
-3. If wanted: shared credentials on the Admin page.
 
-## Questions before building
+## Decided (2026-11-23)
 
-1. **Whose are they?** Each account its own (recommended to start), shared ones managed by an admin, or both?
-2. **How are secrets stored?** Python's standard library has no encryption, and harbor allows no other dependencies. The options:
-    - **(a) Recommended:** plain text in their own file, `credentials.db` (mode 0600, next to `harbor.db`). That's the same protection the `.env` key has today. `harbor backup` would copy it only with `--with-secrets`.
-    - **(b)** Add the `cryptography` package to encrypt secrets at rest, with the encryption key in a separate 0600 file. This breaks the "no dependencies besides the tools" rule, and the key still lives on the same disk.
-    - **(c)** Don't store secrets at all, only references to `HARBOR_KEY_<NAME>` entries in `.env`. This is the safest option, but you edit `.env` and restart to add one.
-3. **Which kinds of sign-in?** API keys and tokens only (the existing modes; recommended), or also user name and password (HTTP Basic) and pasted browser cookies? Cookies expire and are tied to a browser session, so they bring support questions.
-4. **Plain HTTP:** refuse to send a credential to a non-HTTPS site (recommended), or allow it per credential with a warning?
+1. **Own only.** Each account keeps its own in the Account dialog's **Sites** sub-tab, used only for downloads it queues. No shared credentials and no `download.credentials` permission for now (step 3 is dropped).
+2. **Encrypted at rest with the `cryptography` package** (Fernet). This is the first dependency besides the tools, so the "no dependencies" rule in `AGENTS.md` changes to allow it, pinned in `pyproject.toml`. The encryption key lives in its own file, `~/.local/share/harbor/secret.key` (mode 0600, made on first use), never in `harbor.db`. `harbor backup` copies the encrypted secrets with the database, but copies the key only with `--with-secrets`: a backup without it can't reveal them. `harbor doctor` checks the key file exists and is 0600. If the key file is lost, saved secrets can't be read: the page says so, and each credential asks for its secret again.
+3. **API keys and tokens only:** dl-queue's `bearer`, `header` and `query`. No HTTP Basic, no cookies.
+4. **HTTPS only.** Credentials go only to `https://` URLs, or to a loopback host (tests). A plain-HTTP download runs without the credential, with a note.
+
+## Questions that were asked
+
+1. Whose are they: own, shared, or both?
+2. How are secrets stored: plain 0600 file, the `cryptography` package, or `.env` references only?
+3. Which kinds of sign-in: API keys and tokens, HTTP Basic, cookies?
+4. Plain HTTP: refuse, or allow per credential?
