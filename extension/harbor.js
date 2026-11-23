@@ -55,7 +55,7 @@ export async function send(urls) {
   const dest = p.download_dir || s.dest || h.download_dir;
   if (!dest) throw new Error("Choose a save-to folder in the Harbor popup, or set HARBOR_DOWNLOAD_DIR");
   const mode = p.auth_mode || h.auth_mode || "none";
-  if (mode !== "none" && !h.has_key) {
+  if (mode !== "none" && mode !== "auto" && !h.has_key) {  // "auto": harbor picks a saved site key
     throw new Error("Harbor has no API key in its .env (HARBOR_API_KEY), or set HARBOR_AUTH_MODE=none");
   }
   return call("/api/download/add", {

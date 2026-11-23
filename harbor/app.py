@@ -42,8 +42,13 @@ def missing_dependencies() -> list[str]:
     for param in ("can", "visible"):
         if param not in inspect.signature(LibraryAPI).parameters:
             missing.append(f"cbz-shelf LibraryAPI({param}=...)")
-    if "rate" not in inspect.signature(DownloadQueue).parameters:
-        missing.append("dl-queue DownloadQueue(rate=...)")
+    for param in ("rate", "auth_for"):
+        if param not in inspect.signature(DownloadQueue).parameters:
+            missing.append(f"dl-queue DownloadQueue({param}=...)")
+    try:
+        import cryptography.fernet  # noqa: F401  (saved site keys)
+    except ImportError:
+        missing.append("cryptography (for saved site keys)")
     try:
         import cbzwebp.watch  # noqa: F401
     except ImportError:
@@ -173,18 +178,63 @@ def make_library_hook(library: Library):
 
 
 class EnvKeyDownloadAPI(DownloadAPI):
-    """DownloadAPI that uses the key from harbor's settings when the page sends none."""
+    """DownloadAPI that uses the key from harbor's settings when the page sends none, and turns key
+    mode "auto" into ``auth_ref="auto"``: the key is picked at each attempt (``make_auth_for``)."""
 
-    def __init__(self, queue: DownloadQueue, api_key: str = ""):
+    def __init__(self, queue: DownloadQueue, api_key: str = "", site_keys=None):
         super().__init__(queue)
         self._api_key = api_key
+        self.site_keys = site_keys
 
     def post(self, action: str, body: dict) -> tuple[int, dict]:
+        if action != "add":
+            return super().post(action, body)
         auth = body.get("auth")
-        if action == "add" and self._api_key and isinstance(auth, dict):
+        body = {**body, "auth_ref": ""}  # only harbor chooses a reference
+        if isinstance(auth, dict) and auth.get("mode") == "auto":
+            body["auth"], body["auth_ref"] = {"mode": "none"}, "auto"
+        elif self._api_key and isinstance(auth, dict):
             if auth.get("mode", "none") != "none" and not auth.get("key"):
-                body = {**body, "auth": {**auth, "key": self._api_key}}
-        return super().post(action, body)
+                body["auth"] = {**auth, "key": self._api_key}
+        status, out = super().post(action, body)
+        if status == 200 and body["auth_ref"] and self.site_keys is not None:
+            out = {**out, **self._insecure_note(body.get("urls"))}
+        return status, out
+
+    def _insecure_note(self, urls) -> dict:
+        """A note when a saved key matches a plain-HTTP URL: it isn't sent there."""
+        from cbzwebp.web import current_user
+
+        me = current_user()
+        if not me or not isinstance(urls, list):
+            return {}
+        if any(self.site_keys.matches_insecure(me["id"], str(u)) for u in urls):
+            return {
+                "key_note": (
+                    "a saved site key matches, but it's only sent over https: these download without it"
+                )
+            }
+        return {}
+
+
+def make_auth_for(settings: Settings, owners, site_keys=None):
+    """dl-queue's ``auth_for``: for a download added with key mode "auto", the owner's best
+    matching saved site key (https only), else the .env key, else no key."""
+    from dlqueue.download import Auth
+
+    def auth_for(job: Download):
+        if job.auth_ref != "auto":
+            return None
+        owner = owners.get_settled("download", job.id) if owners is not None else None
+        if site_keys is not None and owner is not None:
+            found = site_keys.match(owner, job.url)
+            if found is not None:
+                return found
+        if settings.api_key and settings.auth_mode != "none":
+            return Auth(settings.auth_mode, settings.api_key, settings.auth_name)
+        return None
+
+    return auth_for
 
 
 def queue_lanes(accounts) -> list[Lane]:
@@ -374,6 +424,7 @@ def serve_harbor(
     accounts=None,
     owners=None,
     history=None,
+    site_keys=None,
 ) -> ThreadingHTTPServer:
     """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
     with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab).
@@ -396,7 +447,7 @@ def serve_harbor(
             guests,
         ),
         "/api/download/": GuardedQueueAPI(
-            EnvKeyDownloadAPI(download_queue, settings.api_key),
+            EnvKeyDownloadAPI(download_queue, settings.api_key, site_keys),
             download_queue,
             "download",
             owners,
@@ -420,7 +471,7 @@ def serve_harbor(
         pages["/library"] = LIBRARY_HTML
     auth = None
     if accounts is not None:
-        apis["/api/account/"] = AccountAPI(accounts)
+        apis["/api/account/"] = AccountAPI(accounts, site_keys)
         from .livesettings import LiveSettings
 
         live = LiveSettings(settings, accounts, convert_defaults, download_queue, history)

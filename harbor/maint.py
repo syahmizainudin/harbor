@@ -48,8 +48,12 @@ def default_backup_dir() -> Path:
     return xdg_path("XDG_DATA_HOME", "harbor", "backups")
 
 
-def backup(settings: Settings, dest: Path | None = None, keep: int = 7) -> tuple[Path, list[str]]:
-    """Copy the files into ``dest/<timestamp>/``. Returns the folder and what was copied."""
+def backup(
+    settings: Settings, dest: Path | None = None, keep: int = 7, with_secrets: bool = False
+) -> tuple[Path, list[str]]:
+    """Copy the files into ``dest/<timestamp>/``. Returns the folder and what was copied.
+    ``secret.key`` (it unlocks saved site keys) only ``with_secrets``: without it, the saved keys in
+    the accounts copy can't be read."""
     root = Path(dest).expanduser() if dest else default_backup_dir()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     folder = root / time.strftime("%Y%m%d-%H%M%S")
@@ -71,11 +75,23 @@ def backup(settings: Settings, dest: Path | None = None, keep: int = 7) -> tuple
             shutil.copyfile(src, target)
         target.chmod(0o600)
         done.append(f"{label}: {src} → {target}")
+    secret = _secret_key(settings)
+    if with_secrets and secret.is_file():
+        target = folder / secret.name
+        shutil.copyfile(secret, target)
+        target.chmod(0o600)
+        done.append(f"site key secret: {secret} → {target}")
     if keep > 0:
         mine = sorted(p for p in root.iterdir() if p.is_dir() and BACKUP_NAME.match(p.name))
         for old in mine[:-keep]:
             shutil.rmtree(old)
     return folder, done
+
+
+def _secret_key(settings: Settings) -> Path:
+    from .sitekeys import key_file
+
+    return key_file(data_files(settings)["accounts"])
 
 
 # ---------------------------------------------------------------- doctor
@@ -191,6 +207,13 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
             add((OK, f"{label} database {path}"))
         if note := _mode_note(path):
             add((WARN, note))
+    secret = _secret_key(settings)
+    if settings.accounts and secret.is_file():
+        mode = stat.S_IMODE(secret.stat().st_mode)
+        if mode & 0o077:
+            add((WARN, f"{secret} can be read by other users (mode {mode:o}): chmod 600 {secret}"))
+        else:
+            add((OK, f"site key secret {secret}"))
 
     lib = files["library"]
     if lib.is_file():

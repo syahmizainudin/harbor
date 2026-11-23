@@ -95,6 +95,12 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - **Schema changes** go in `accounts.MIGRATIONS`, one step each; never drop user data.
 - **Tests** use a temp accounts database. Never point one at `~/.local/share/harbor/harbor.db`.
 
+## Saved site keys (`sitekeys.py`)
+
+- Each account's own API keys and tokens (migration 10, `site_keys`), managed in the Account dialog's Sites tab through `AccountAPI` `site-key-set`/`site-key-remove`: browser sessions only, and only with `download`. Plan: `docs/plan-site-credentials.md`.
+- **Secrets:** Fernet-encrypted with the key in `secret.key` next to the accounts database (0600, made on first use), never in the database. `list` and `/api/state` give label, site, kind, name and `readable`, never the secret; saving with an empty secret keeps the old one. Audit lines name the label and site only. `harbor backup` copies `secret.key` only with `--with-secrets`; `harbor doctor` warns when it isn't 0600.
+- **Use:** key mode `"auto"` (page, presets and per-user defaults; not `HARBOR_AUTH_MODE`). `EnvKeyDownloadAPI` turns it into `auth_ref="auto"` and clears any `auth_ref` a client sent. dl-queue calls `app.make_auth_for` at each attempt: the owner's (`JobOwners.get_settled`) most specific matching key (exact host, then the longest path; `*.example.com` is subdomains only), sent only to `https://` or loopback URLs; else the `.env` key; else none. `QueueStore` saves `auth_ref`, never a key, and restores inside `owners.adding` so the key is picked for the right owner. Tests: `tests/test_sitekeys.py`.
+
 ## History, audit log, backup and doctor
 
 - **History** (`history.py`, its own database so it works with accounts off): one record per job, written when the job first reaches done, skipped, failed or cancelled. `on_change` fires on every progress tick, so `History.on_change` dedupes by `(kind, id) → finished_at` (a retry reuses the id) and queues the record for a writer thread, which waits for the owner with `JobOwners.get_settled`. A worker never waits on SQLite. `cli.close_all` sets `history.enabled = False` before shutting the queues down (cancelled-by-shutdown jobs are restored, not finished) and closes it after them. Never record `auth`. `HistoryAPI` shows your own records, everyone's with `jobs.see_all` (`all=1`), and nothing to guests (`guests=True`, and `/api/history/` isn't in `guest_may`). `history_saved` in `/api/state` is cached and dropped on every write.
@@ -148,7 +154,7 @@ To test against local checkouts of the two tools instead of the pinned tags: `pi
 
 ## Rules for the code
 
-- **No dependencies besides the two tools** (and Pillow through cbz-webp). Standard library otherwise; the page is plain JS with no CDN.
+- **No dependencies besides the tools and `cryptography`** (and Pillow through cbz-webp). `cryptography` is only for saved site keys (`sitekeys.py`), pinned in `pyproject.toml`, and checked by `missing_dependencies`. Standard library otherwise; the page is plain JS with no CDN.
 - **Python 3.10+.** CI tests 3.10 through 3.14.
 - **The console stays local and guarded.** The guards live in the shared `serve` from cbz-webp. Don't add a handler here; add an action to an API object in the right tool instead.
 - **Reaching harbor from other devices** goes through `config.check_reach`, which `cli.cmd_ui` and `harbor doctor` both run: anything but a loopback `HARBOR_HOST`, or `HARBOR_TRUST_PROXY`, needs HTTPS (harbor's own certificate, or a proxy on this machine), `HARBOR_SECURE_COOKIE`, accounts, and `HARBOR_ALLOWED_HOSTS`. Never weaken a rule there without the user asking; add a case to `tests/test_reach.py` for any change. The shared server only trusts `X-Forwarded-*` from loopback connections. The Chrome extension stays on localhost: with harbor's own HTTPS, `HARBOR_LOCAL_PORT` opens a second, plain-HTTP server on 127.0.0.1 only (`server.local_server`, same APIs and checks, started and stopped by `cli.cmd_ui`). It never binds anything but 127.0.0.1. Test HTTPS against a throwaway certificate made with `openssl` in a temp folder, never the user's.

@@ -102,6 +102,13 @@ MIGRATIONS: list[str] = [
     # 9: server settings changed on the Admin page (``livesettings``), as the text a .env would
     # hold. A setting given in .env, the environment or a flag ignores its row.
     """CREATE TABLE settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)""",
+    # 10: each account's saved site keys (``sitekeys``). ``secret`` is Fernet-encrypted with the
+    # key in ``secret.key`` next to this database, never in it.
+    """CREATE TABLE site_keys (
+           id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           label TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL DEFAULT '',
+           mode TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', secret BLOB NOT NULL,
+           created_at REAL NOT NULL, updated_at REAL NOT NULL)""",
 ]
 LANES_MAX = 20
 TOKEN_SCOPES = {"extension": "Chrome extension", "reader": "Reader app"}
@@ -143,7 +150,10 @@ def _int_in(lo: int, hi: int):
     return lambda v: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
 
 
-AUTH_MODES = ("none", "bearer", "header", "query")
+# Key modes the page, presets and defaults may hold. "auto": a saved site key for the URL, else the
+# .env key (``app.make_auth_for``). HARBOR_AUTH_MODE itself can't be "auto": it says how the .env
+# key is sent.
+AUTH_MODES = ("none", "bearer", "header", "query", "auto")
 PRESETS_MAX = 20
 # One download preset's fields: name -> check. Never the API key.
 PRESET_FIELDS = {
@@ -913,8 +923,9 @@ class HarborSignIn:
 class AccountAPI:
     """Signing in and out, and the signed-in user's own account, at ``/api/account/``."""
 
-    def __init__(self, accounts: Accounts):
+    def __init__(self, accounts: Accounts, site_keys=None):
         self.accounts = accounts
+        self.site_keys = site_keys  # sitekeys.SiteKeys, for the Sites tab
 
     @staticmethod
     def _me() -> dict | None:
@@ -935,8 +946,13 @@ class AccountAPI:
                 "browser": bool(me.get("_sid")),
                 "tokens": self.accounts.tokens(me["id"]) if me.get("_sid") else [],
                 "prefs": me.get("prefs", {}),
+                "site_keys": self.site_keys.list(me["id"]) if self._sites(me) else None,
             }
         }
+
+    def _sites(self, me) -> bool:
+        """Saved site keys: browser sessions of users who may download."""
+        return self.site_keys is not None and bool(me.get("_sid")) and "download" in me.get("perms", ())
 
     def get(self, action: str, query: dict):
         def out(status, obj):
@@ -1004,6 +1020,21 @@ class AccountAPI:
             if ok:
                 acc.audit("token revoked", me["name"], f"token {int(body['id'])}", actor=me)
             return 200, {"ok": ok}
+        if action in ("site-key-set", "site-key-remove"):
+            if not self._sites(me):
+                return 403, {"error": "you don't have permission to download"}
+            if action == "site-key-set":
+                saved = self.site_keys.set(me["id"], body)
+                where = saved["host"] + saved["path"]
+                acc.audit("site key saved", me["name"], f"{saved['label']}: {where}", actor=me)
+                return 200, {"site_keys": self.site_keys.list(me["id"])}
+            gone = self.site_keys.remove(me["id"], int(body["id"]))
+            if gone is None:
+                return 404, {"error": "no such saved key"}
+            acc.audit(
+                "site key removed", me["name"], f"{gone['label']}: {gone['host']}{gone['path']}", actor=me
+            )
+            return 200, {"site_keys": self.site_keys.list(me["id"])}
         if action == "session-revoke":
             ok = acc.revoke_session(me["id"], str(body.get("id", "")))
             if ok:

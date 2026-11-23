@@ -66,6 +66,8 @@
   #seriesEditDlg input, #seriesEditDlg textarea { width: 100%; }
   #acctDlg h3 { font-size: 14px; margin: 0 0 8px; }
   #acctDlg input { width: 100%; margin-bottom: 8px; }
+  #siteKeyForm .field { margin-bottom: 8px; }
+  #siteKeyForm .field input { margin-bottom: 0; }
   .tokens { list-style: none; margin: 0 0 8px; padding: 0; }
   .tokens li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
   .newtoken { word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0; }
@@ -321,6 +323,7 @@
               <option value="header">Custom header</option>
               <option value="query">Query parameter</option>
               <option value="none">No API key</option>
+              <option value="auto" id="authAuto" hidden>Saved site key (automatic)</option>
             </select>
             <input type="text" id="authName" class="mono" placeholder="X-API-Key" hidden aria-label="Header or parameter name">
           </div>
@@ -499,6 +502,23 @@
       <p class="note">Each browser that signed in to your account. Sign one out if you no longer use it or don't recognise it.</p>
       <ul class="tokens" id="sessionList"></ul>
       <div class="msg" id="sessionMsg"></div>
+    </section>
+    <section id="acctSitesBox" hidden>
+      <h3>Saved site keys</h3>
+      <p class="note">API keys and tokens for the sites you download from. With “Saved site key (automatic)” on the Download tab (or in a preset), harbor sends the key whose site matches each download's address, over https only. Keys are stored encrypted and never shown again; to change one, enter it again.</p>
+      <ul class="tokens" id="siteKeyList"></ul>
+      <form id="siteKeyForm" autocomplete="off">
+        <input type="text" id="skLabel" placeholder="Name, such as Example API" maxlength="60" aria-label="Name">
+        <input type="text" id="skHost" class="mono" placeholder="Site: api.example.com or *.example.com" aria-label="Site">
+        <input type="text" id="skPath" class="mono" placeholder="Path, optional, such as /files/" aria-label="Path">
+        <div class="field">
+          <select id="skMode" aria-label="Sent as"><option value="bearer">Authorization: Bearer &lt;key&gt;</option><option value="header">Custom header</option><option value="query">Query parameter</option></select>
+          <input type="text" id="skName" class="mono" placeholder="X-API-Key" hidden aria-label="Header or parameter name">
+        </div>
+        <input type="password" id="skSecret" placeholder="Key or token" autocomplete="new-password" aria-label="Key or token">
+        <div class="field"><button class="primary" id="skSave">Save key</button><button type="button" class="link" id="skCancel" hidden>Cancel editing</button></div>
+        <div class="msg" id="skMsg"></div>
+      </form>
     </section>
     <section id="acctTokensBox" hidden>
       <h3>Tokens: Chrome extension and reader apps</h3>
@@ -776,7 +796,7 @@ function authUI() {
   const m = $("authMode").value;
   $("authName").hidden = !(m === "header" || m === "query");
   $("authName").placeholder = m === "query" ? "api_key" : "X-API-Key";
-  $("keyRow").hidden = m === "none";
+  $("keyRow").hidden = m === "none" || m === "auto";
 }
 function saveKey() { store.set("apiKey", $("rememberKey").checked && $("apiKey").value ? $("apiKey").value : null); }
 function convertNote() {
@@ -877,7 +897,7 @@ $("dlAdd").onclick = async () => {
   const mode = $("authMode").value;
   if (!urls.length) return say($("dlMsg"), "Enter at least one URL.", true);
   if (!dest) return say($("dlMsg"), "Choose a folder to save to.", true);
-  if (mode !== "none" && !$("apiKey").value && !envKey) return say($("dlMsg"), "Enter the API key, or choose “No API key”.", true);
+  if (mode !== "none" && mode !== "auto" && !$("apiKey").value && !envKey) return say($("dlMsg"), "Enter the API key, or choose “No API key”.", true);
   if ((mode === "header" || mode === "query") && !$("authName").value.trim())
     return say($("dlMsg"), `Enter the ${mode === "header" ? "header" : "parameter"} name.`, true);
   try {
@@ -893,7 +913,8 @@ $("dlAdd").onclick = async () => {
     }
     const have = r.in_library || [];
     say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + "." +
-      (have.length ? ` Already in the library: ${have.slice(0, 3).map(b => `${b.book} (${b.file})`).join(", ")}${have.length > 3 ? ` and ${have.length - 3} more` : ""}.` : ""));
+      (have.length ? ` Already in the library: ${have.slice(0, 3).map(b => `${b.book} (${b.file})`).join(", ")}${have.length > 3 ? ` and ${have.length - 3} more` : ""}.` : "") +
+      (r.key_note ? ` Note: ${r.key_note}.` : ""));
     $("urls").value = "";
     refresh();
   } catch (e) { say($("dlMsg"), e.message, true); }
@@ -1432,27 +1453,81 @@ function renderAccount(a) {
   $("pwUser").value = a.name;
   $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)} <span class="note">· ${t.scope === "reader" ? "reader app" : "Chrome extension"}</span><br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
     <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
+  const sites = a.site_keys;
+  $("authAuto").hidden = sites === null;
+  if (sites === null && $("authMode").value === "auto") { $("authMode").value = "bearer"; authUI(); }
+  if (sites !== null) {
+    const how = { bearer: "Bearer", header: "header", query: "query parameter" };
+    $("siteKeyList").innerHTML = sites.length ? sites.map(k => `<li><span>${esc(k.label)} <span class="note mono">${esc(k.host + k.path)}</span><br>
+      <span class="note">${how[k.mode]}${k.name ? " " + esc(k.name) : ""} · saved ${new Date(k.updated_at * 1000).toLocaleDateString()}${k.readable ? "" : ' · <b style="color:var(--bad)">can\'t be read: enter it again</b>'}</span></span>
+      <span class="actions"><button class="small" data-sk-edit="${k.id}">Edit</button><button class="small" data-sk-rm="${k.id}">Remove</button></span></li>`).join("") : `<li class="note">No saved keys.</li>`;
+  }
 }
+// Saved site keys: add, edit (the secret is entered again or left empty to keep it), remove.
+let skEditing = null;
+function skModeUI() {
+  const m = $("skMode").value;
+  $("skName").hidden = m === "bearer";
+  $("skName").placeholder = m === "query" ? "api_key" : "X-API-Key";
+}
+function skReset() {
+  skEditing = null;
+  $("siteKeyForm").reset(); skModeUI();
+  $("skSecret").placeholder = "Key or token";
+  $("skCancel").hidden = true;
+}
+$("skMode").onchange = skModeUI;
+$("skCancel").onclick = () => { skReset(); say($("skMsg"), ""); };
+$("siteKeyForm").onsubmit = async e => {
+  e.preventDefault();
+  const body = { label: $("skLabel").value.trim(), host: $("skHost").value.trim(), path: $("skPath").value.trim(),
+    mode: $("skMode").value, name: $("skName").value.trim(), secret: $("skSecret").value };
+  if (skEditing !== null) body.id = skEditing;
+  try {
+    await api("/api/account/site-key-set", body);
+    say($("skMsg"), `Saved “${body.label}”.`);
+    skReset();
+    refresh();
+  } catch (err) { say($("skMsg"), err.message, true); }
+};
+$("siteKeyList").onclick = async e => {
+  const ed = e.target.closest("[data-sk-edit]"), rm = e.target.closest("[data-sk-rm]");
+  const k = (account?.site_keys || []).find(x => x.id === +(ed || rm)?.dataset[ed ? "skEdit" : "skRm"]);
+  if (!k) return;
+  if (ed) {
+    skEditing = k.id;
+    $("skLabel").value = k.label; $("skHost").value = k.host; $("skPath").value = k.path;
+    $("skMode").value = k.mode; $("skName").value = k.name; $("skSecret").value = ""; skModeUI();
+    $("skSecret").placeholder = "Leave empty to keep the saved key";
+    $("skCancel").hidden = false;
+    $("skLabel").focus();
+  } else if (confirm(`Remove the saved key “${k.label}”?`)) {
+    try { await api("/api/account/site-key-remove", { id: k.id }); say($("skMsg"), `Removed “${k.label}”.`); refresh(); }
+    catch (err) { say($("skMsg"), err.message, true); }
+  }
+};
 // One sub-tab per section, like the Admin tab; the last one opened is remembered.
 const ACCOUNT_SECTIONS = [
   ["password", "acctPwBox", "Password"],
   ["defaults", "acctPrefsBox", "Defaults"],
+  ["sites", "acctSitesBox", "Sites"],
   ["sessions", "acctSessionsBox", "Sessions"],
   ["tokens", "acctTokensBox", "Tokens"],
 ];
 let acctTab = store.get("accountTab", "password");
 function showAccountTab(key) {
-  if (!ACCOUNT_SECTIONS.some(([k]) => k === key)) key = "password";
+  const offered = ACCOUNT_SECTIONS.filter(([k]) => k !== "sites" || (account && account.site_keys !== null));
+  if (!offered.some(([k]) => k === key)) key = "password";
   acctTab = key;
   store.set("accountTab", key);
-  setHTML($("acctTabs"), ACCOUNT_SECTIONS.map(([k, , label]) =>
+  setHTML($("acctTabs"), offered.map(([k, , label]) =>
     `<button role="tab" data-acct="${k}" aria-selected="${k === key}">${label}</button>`).join(""));
   for (const [k, box] of ACCOUNT_SECTIONS) $(box).hidden = k !== key;
   if (key === "sessions") loadSessions();
 }
 $("acctTabs").onclick = e => { const b = e.target.closest("[data-acct]"); if (b) showAccountTab(b.dataset.acct); };
 $("acctBtn").onclick = () => {
-  say($("pwMsg"), ""); say($("prefsMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); $("tokenShow").hidden = true;
+  say($("pwMsg"), ""); say($("prefsMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); say($("skMsg"), ""); $("tokenShow").hidden = true;
   showAccountTab(acctTab);
   $("acctDlg").showModal();
 };

@@ -59,6 +59,11 @@ class QueueStore:
             for j in jobs:
                 self.owners.set(kind, j.id, user_id)
 
+    def _adding(self, kind: str, queue, user_id):
+        from contextlib import nullcontext
+
+        return self.owners.adding(kind, queue, user_id) if self.owners is not None else nullcontext()
+
     @property
     def enabled(self) -> bool:
         return self._enabled
@@ -129,6 +134,7 @@ class QueueStore:
                     "auth_name": j.auth.name,
                     "filename": j.filename,
                     "lane": getattr(j, "lane", ""),
+                    "auth_ref": getattr(j, "auth_ref", ""),  # "auto": the key is picked again at each try
                     "owner": self._owner("download", j.id),
                 }
                 for j in dq.jobs()
@@ -214,9 +220,13 @@ class QueueStore:
                 if lane and lane not in lanes:  # removed since: the default lane, as dl-queue does
                     notes.append(f"{d['url']}: download lane {lane!r} is gone; queued without a lane")
                     lane = ""
-                added, _ = dq.add([d["url"]], d["dest_dir"], auth, after=d.get("after") or {}, lane=lane)
+                ref = d.get("auth_ref") or ""
+                # Owner recorded during the add: a saved site key is picked for the owner at once.
+                with self._adding("download", dq, d.get("owner")):
+                    added, _ = dq.add(
+                        [d["url"]], d["dest_dir"], auth, after=d.get("after") or {}, lane=lane, auth_ref=ref
+                    )
                 restored += len(added)
-                self._set_owner("download", added, d.get("owner"))
             except (KeyError, TypeError, ValueError, OSError) as e:
                 notes.append(f"not restored: {d.get('url', '?')}: {e}")
         return restored

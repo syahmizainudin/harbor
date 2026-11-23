@@ -25,6 +25,7 @@ class HttpBase(unittest.TestCase):
     """A harbor with three accounts (Ann admin, Mo member, Rea reader) and a one-book library."""
 
     EXPLICIT: ClassVar[dict] = {}  # settings "given in .env", locked on the Settings tab
+    SITE_KEYS = False  # saved site keys on (secret.key in the temp folder)
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -44,8 +45,22 @@ class HttpBase(unittest.TestCase):
         )
         self.cq.set_paused(True)  # jobs stay queued, so the tests see them
         self.settings = Settings(explicit=dict(self.EXPLICIT))
+        self.site_keys = None
+        if self.SITE_KEYS:
+            from harbor.app import make_auth_for
+            from harbor.sitekeys import SiteKeys, Vault
+
+            self.site_keys = SiteKeys(self.acc, Vault(self.dir / "secret.key"))
+            self.dq.auth_for = make_auth_for(self.settings, self.owners, self.site_keys)
         self.server = serve_harbor(
-            0, self.cq, self.dq, self.settings, library=self.lib, accounts=self.acc, owners=self.owners
+            0,
+            self.cq,
+            self.dq,
+            self.settings,
+            library=self.lib,
+            accounts=self.acc,
+            owners=self.owners,
+            site_keys=self.site_keys,
         )
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()

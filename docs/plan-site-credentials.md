@@ -1,6 +1,6 @@
 # Plan: site credentials
 
-Status: design agreed 2026-11-23, not started. Decisions are under "Decided" at the end.
+Status: built 2026-11-23 (dl-queue `auth_for`, harbor `sitekeys.py`), waiting for release. Decisions are under "Decided" at the end.
 
 ## What was asked
 

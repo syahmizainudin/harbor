@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument(
         "--keep", type=int, default=7, help="newest backups to keep in that folder; 0 keeps all (default 7)"
     )
+    b.add_argument(
+        "--with-secrets",
+        action="store_true",
+        help="also copy secret.key, which unlocks saved site keys (keep such backups private)",
+    )
     d = sub.add_parser("doctor", help="check settings, dependencies, databases and folders (changes nothing)")
     d.add_argument("--env-file", help="settings file to read")
     return ap
@@ -109,7 +114,9 @@ def cmd_backup(args) -> int:
     try:
         if args.keep < 0:
             raise ConfigError("--keep must be 0 or more")
-        folder, done = backup(load_settings({}, args.env_file), Path(args.to) if args.to else None, args.keep)
+        folder, done = backup(
+            load_settings({}, args.env_file), Path(args.to) if args.to else None, args.keep, args.with_secrets
+        )
     except (ConfigError, OSError, sqlite3.Error) as e:
         print(f"harbor: {e}", file=sys.stderr)
         return 2
@@ -239,7 +246,7 @@ def cmd_ui(args) -> int:
     except (OSError, sqlite3.Error) as e:
         print(f"harbor: cannot open the library database: {e}", file=sys.stderr)
         return 2
-    accounts = None
+    accounts = site_keys = None
     if settings.accounts:
         try:
             accounts = Accounts(
@@ -259,6 +266,9 @@ def cmd_ui(args) -> int:
             accounts.session_seconds = settings.session_days * 86400
             accounts.audit_days = settings.audit_days
             print(f"harbor: settings from the Admin page: {', '.join(used)}", flush=True)
+        from .sitekeys import SiteKeys, Vault, key_file
+
+        site_keys = SiteKeys(accounts, Vault(key_file(_path(settings.accounts_db, default_accounts_db()))))
     store = QueueStore(_path(settings.state_file, default_state_file()))
     owners = JobOwners()  # who queued each job, shared by the hand-off, the saved state and the API
     try:
@@ -287,6 +297,9 @@ def cmd_ui(args) -> int:
         hours=settings.download_hours,
         fair=settings.download_fair,
     )
+    from .app import make_auth_for
+
+    dq.auth_for = make_auth_for(settings, owners, site_keys)  # key mode "auto", before restoring jobs
     store.attach(cq, dq, owners)
 
     watcher = None
@@ -317,7 +330,9 @@ def cmd_ui(args) -> int:
                 f"harbor: gave {moved} reading record(s) from before accounts to {admin['name']}", flush=True
             )
     try:
-        server = serve_harbor(settings.port, cq, dq, settings, notes, library, accounts, owners, history)
+        server = serve_harbor(
+            settings.port, cq, dq, settings, notes, library, accounts, owners, history, site_keys
+        )
     except (OSError, ValueError) as e:  # ssl.SSLError is an OSError: a bad certificate or key
         print(f"harbor: cannot listen on {settings.host}:{settings.port}: {e}", file=sys.stderr)
         close_all(save=False)  # keep the saved jobs for the next start

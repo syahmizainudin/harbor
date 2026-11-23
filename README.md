@@ -154,6 +154,17 @@ pm2 restart harbor                           # after changing .env or updating
 
 To start pm2 itself when WSL starts, run the command `pm2 startup` prints (it needs `sudo`).
 
+## Saved site keys
+
+With accounts, each person can save API keys and tokens for the sites they download from: **Your account → Sites**. A key has a name, a site (`api.example.com`, or `*.example.com` for its subdomains), an optional path (`/files/`), and how it's sent (Bearer, a custom header, or a query parameter).
+
+On the Download tab (or in a preset, so the Chrome extension uses it too), choose **API key sent as: Saved site key (automatic)**. Each download then uses your key whose site matches its address, most specific first, or the `.env` key when none matches.
+
+- Keys are sent over **https only** (and to this computer). A plain-http download runs without the key, and the page says so.
+- Keys are stored **encrypted**; the encryption key is `secret.key` next to harbor's accounts database (`~/.local/share/harbor/`). They're never shown again: to change one, enter it again. Your keys are used only for downloads you queue.
+- Downloads keep working after a restart: the key is picked again at each try, never saved with the download.
+- `harbor backup` leaves `secret.key` out unless you add `--with-secrets`, so a backup alone can't reveal your keys. Lose `secret.key` and the saved keys show "can't be read"; enter them again.
+
 ## Reader apps (OPDS)
 
 Harbor's library is an [OPDS](https://opds.io/) catalog, so reader apps such as Panels, Chunky and KOReader can browse it, search it, stream comic pages and download books for offline reading.
