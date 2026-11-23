@@ -14,7 +14,7 @@ Separate download queues: named lanes (such as *manga* and *books*), each with i
 4. **Removing a lane is safe.** Its queued downloads run under the default lane. A preset or saved job naming a lane that's gone: adds are refused with dl-queue's message; restored jobs fall back to the default lane.
 5. **Managed live on the Admin page** (new permission `download.lanes`), stored in the accounts database (migration 7), every change in the audit log and applied without a restart.
 6. **Accounts off: no lanes.** There's no Admin page without accounts.
-7. **Follow-ups (built 2026-11-23, dl-queue 0.6.1, waiting for release):** per-lane pause (dl-queue `set_lane_paused`, harbor `lane-pause` with `download.lanes`, not saved across restarts, like the overall pause); per-role access (migration 8, "Who can use it" on the Admin page, Admin always may, others don't see the lane and are refused on add); per-site fairness behind `HARBOR_DOWNLOAD_FAIR` (off by default; the site with the fewest running downloads in the lane goes next).
+7. **Follow-ups (released 2026-11-23 in dl-queue 0.6.1 and harbor 0.2.6):** per-lane pause (dl-queue `set_lane_paused`, harbor `lane-pause` with `download.lanes`, not saved across restarts, like the overall pause); per-role access (migration 8, "Who can use it" on the Admin page, Admin always may, others don't see the lane and are refused on add); per-site fairness behind `HARBOR_DOWNLOAD_FAIR` (off by default; the site with the fewest running downloads in the lane goes next).
 
 ## Steps
 

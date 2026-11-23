@@ -2,7 +2,9 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
-## Unreleased
+## 0.2.6
+
+Pins cbz-webp 0.5.1, dl-queue 0.6.1 and cbz-shelf 0.6.0.
 
 - **Download lanes for some roles:** on the Admin page, **Who can use it** keeps a lane to the roles you tick (Admin always can). Others don't see it in the Lane menu, and adding to it is refused. Migration 8; a removed role leaves the lists. The audit line names who can use it.
 - **Pause one lane:** a **Pause** / **Resume** button on each lane's chip on the Download tab and its row on the Admin page (`download.lanes`). Its queued downloads wait; running ones finish.
