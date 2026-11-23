@@ -99,6 +99,9 @@ MIGRATIONS: list[str] = [
     # 8: which roles may use a download lane: NULL every role, or a JSON list of role ids (Admin
     # always may).
     """ALTER TABLE download_lanes ADD COLUMN roles_json TEXT""",
+    # 9: server settings changed on the Admin page (``livesettings``), as the text a .env would
+    # hold. A setting given in .env, the environment or a flag ignores its row.
+    """CREATE TABLE settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)""",
 ]
 LANES_MAX = 20
 TOKEN_SCOPES = {"extension": "Chrome extension", "reader": "Reader app"}
@@ -125,6 +128,7 @@ PERMISSIONS = [
     ("library.manage", "Manage library folders and scans"),
     ("jobs.see_all", "See and manage everyone's jobs"),
     ("download.lanes", "Manage download lanes"),
+    ("settings.manage", "Change server settings"),
     ("users.manage", "Manage users"),
     ("roles.manage", "Manage roles and permissions"),
 ]
@@ -545,6 +549,23 @@ class Accounts:
             return bool(
                 self._db.execute("DELETE FROM download_lanes WHERE name = ?", (str(name).strip(),)).rowcount
             )
+
+    # ------------------------------------------------------------ server settings
+    def saved_settings(self) -> dict[str, str]:
+        """Settings saved on the Admin page: name -> the text a .env would hold."""
+        return {r["name"]: r["value"] for r in self._q("SELECT name, value FROM settings")}
+
+    def save_setting(self, name: str, value: str | None) -> None:
+        """Save a setting's text, or forget it (None) so the default applies. Checked by the caller."""
+        with self._lock:
+            if value is None:
+                self._db.execute("DELETE FROM settings WHERE name = ?", (name,))
+            else:
+                self._db.execute(
+                    "INSERT INTO settings(name, value) VALUES (?, ?) "
+                    "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+                    (name, value),
+                )
 
     def library_rules(self) -> dict[int, dict]:
         """Library id -> ``{"roles": None or [role ids], "guests": bool}``, for libraries that

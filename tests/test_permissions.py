@@ -1,5 +1,6 @@
 """Tests for roles and permissions: what each role may do, job ownership, and the admin API."""
 
+from typing import ClassVar
 import http.client
 import json
 import tempfile
@@ -23,6 +24,8 @@ PW = "correct horse"
 class HttpBase(unittest.TestCase):
     """A harbor with three accounts (Ann admin, Mo member, Rea reader) and a one-book library."""
 
+    EXPLICIT: ClassVar[dict] = {}  # settings "given in .env", locked on the Settings tab
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
@@ -40,8 +43,9 @@ class HttpBase(unittest.TestCase):
             jobs=1, image_threads=1, downloads=1, timeout=5, retries=0, owners=self.owners
         )
         self.cq.set_paused(True)  # jobs stay queued, so the tests see them
+        self.settings = Settings(explicit=dict(self.EXPLICIT))
         self.server = serve_harbor(
-            0, self.cq, self.dq, Settings(), library=self.lib, accounts=self.acc, owners=self.owners
+            0, self.cq, self.dq, self.settings, library=self.lib, accounts=self.acc, owners=self.owners
         )
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -342,6 +346,80 @@ class DownloadLaneTests(HttpBase):
         st = json.loads(conn.getresponse().read())
         conn.close()
         self.assertEqual(st["download_lanes"], [])
+
+
+class ServerSettingsTests(HttpBase):
+    """The Admin page's Settings tab: settings.manage, .env locks, live and after-restart settings."""
+
+    EXPLICIT: ClassVar[dict] = {"jobs": "/x/.env"}
+
+    def rows(self, who="Ann"):
+        return {r["name"]: r for r in self.req(who, "GET", "/api/state")[1]["admin_settings"]}
+
+    def set(self, name, value, who="Ann"):
+        return self.req(who, "POST", "/api/admin/setting-set", {"name": name, "value": value})
+
+    def test_only_with_settings_manage(self):
+        self.assertNotIn("admin_settings", self.req("Mo", "GET", "/api/state")[1])
+        self.assertEqual(self.set("quality", "60", "Mo")[0], 403)
+        self.assertEqual(self.settings.quality, 80)
+
+    def test_live_settings_apply_at_once(self):
+        status, res = self.set("quality", "65")
+        self.assertEqual(status, 200, res)
+        self.assertEqual(self.req("Mo", "GET", "/api/state")[1]["defaults"]["quality"], 65)
+        self.assertEqual(self.set("download_rate", "5M")[0], 200)
+        self.assertEqual(self.dq.rate, 5 * 1024**2)
+        self.assertEqual(self.set("download_hours", "01:00-07:00")[0], 200)
+        self.assertEqual(self.dq.hours, (60, 420))
+        self.assertEqual(self.set("download_fair", "true")[0], 200)
+        self.assertTrue(self.dq.fair)
+        self.assertEqual(self.set("download_dir", str(self.dir))[0], 200)
+        self.assertEqual(self.req("Mo", "GET", "/api/state")[1]["harbor"]["download_dir"], str(self.dir))
+        self.assertEqual(self.set("session_days", "7")[0], 200)
+        self.assertEqual(self.acc.session_seconds, 7 * 86400)
+        self.assertEqual(self.acc.saved_settings()["quality"], "65")
+        row = self.rows()["quality"]
+        self.assertEqual((row["value"], row["saved"], row["default"]), ("65", "65", "80"))
+        log = self.acc.audit_log(10, 0, "setting changed")["items"]
+        self.assertIn(("HARBOR_QUALITY", "80 → 65"), [(x["target"], x["detail"]) for x in log])
+        # back to the default
+        self.assertEqual(self.set("quality", "")[0], 200)
+        self.assertNotIn("quality", self.acc.saved_settings())
+        self.assertEqual(self.req("Ann", "GET", "/api/state")[1]["defaults"]["quality"], 80)
+        self.assertEqual(self.set("download_hours", "")[0], 200)
+        self.assertIsNone(self.dq.hours)
+
+    def test_restart_settings_are_saved_not_applied(self):
+        self.assertEqual(self.set("downloads", "3")[0], 200)
+        row = self.rows()["downloads"]
+        self.assertEqual((row["value"], row["running"], row["applies"]), ("3", "2", "restart"))
+        self.assertEqual(self.dq.workers, 1)
+
+    def test_refused_changes(self):
+        status, err = self.set("jobs", "2")  # given in .env
+        self.assertEqual(status, 400)
+        self.assertIn("HARBOR_JOBS is set in /x/.env", err["error"])
+        self.assertEqual(self.rows()["jobs"]["locked"], "/x/.env")
+        status, err = self.set("watch_delete_original", "true")
+        self.assertEqual(
+            (status, err), (400, {"error": "HARBOR_WATCH_DELETE_ORIGINAL can only be set in .env"})
+        )
+        self.assertEqual(self.set("api_key", "secret")[0], 404)
+        self.assertEqual(self.set("port", "1")[0], 404)
+        for name, bad in (
+            ("quality", "101"),
+            ("download_rate", "fast"),
+            ("download_hours", "1-7"),
+            ("quality", "6\n0"),
+        ):
+            self.assertEqual(self.set(name, bad)[0], 400, (name, bad))
+        self.assertEqual(
+            self.req("Ann", "POST", "/api/admin/setting-set", {"name": "quality", "value": 6})[0], 400
+        )
+        self.assertEqual(self.acc.saved_settings(), {})
+        names = set(self.rows())
+        self.assertFalse(names & {"api_key", "port", "host", "accounts", "tls_key", "accounts_db"})
 
 
 class LibraryAccessTests(HttpBase):

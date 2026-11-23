@@ -26,6 +26,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/login.html` | Served at `/login` (the shared server's redirect target, and where the Library frame goes on a 401). It forwards to `/?signin=1&next=…`, where the page signs in through its `#signInDlg` dialog; its own form is only the fallback if `/api/account/status` fails |
 | `harbor/perms.py` | `GuardedQueueAPI` (permissions on the queue APIs), `JobOwners` (who queued each job), `can` |
 | `harbor/admin.py` | `AdminAPI` at `/api/admin/`: users and roles, with the no-escalation rule |
+| `harbor/livesettings.py` | The Settings tab: which settings the page may change (`EDITABLE`, `READ_ONLY`), `apply_saved` at start-up, `LiveSettings` (rows, `set`, applying "now" settings to the running queues) |
 | `docs/plan-users.md` | The plan for accounts, permissions and per-user settings, phase by phase |
 | `docs/planned-features.md` | Points to the planned-features list, a Claude Doc (https://claude.ai/artifact/GK7bah81qG4Ae8yDAzXV6x) edited without commits; read it through the Claude Docs tools. Detailed plans stay in `docs/plan-*.md` |
 | `docs/design.md` | How harbor looks (colours, layout, the shared pieces, words) and how a request flows; follow it for new features |
@@ -59,6 +60,7 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - On shutdown, stop the download queue before the convert queue, so no download hands work to a converter that is stopping.
 - Never add the API key to `after`, a message or anything else that reaches `/api/state`.
 - The `.env` key (`HARBOR_API_KEY`) stays on the server. `Settings.page_defaults()` exposes only `has_key`, and `Settings` hides `api_key` from `repr`. `EnvKeyDownloadAPI` adds it only when the page sends a mode other than `none` with an empty key. Tests check that the key never shows up in `/api/state`.
+- **Settings on the Admin page** (`livesettings.py`, migration 9 `settings`, permission `settings.manage`): only names in `EDITABLE` can be changed there, checked with the same `config.VARS` validator and stored as `.env` text. A setting in `Settings.explicit` (given in `.env`, the environment or a flag) is locked. `cli.cmd_ui` opens the accounts database before building the queues and calls `apply_saved`, so "restart" settings take effect at start. "now" settings change the running objects in `LiveSettings._apply`. Never add a start-up, security, path or secret setting (port, host, TLS, trust proxy, accounts, databases, extension origins, `api_key`) to `EDITABLE`, and keep `watch_delete_original` read-only. Each change is audited (`setting changed`, old → new); values there are never secret.
 - Every setting goes through `config.VARS` with a validator. A bad value or a misspelled `HARBOR_` name stops startup with the file and setting named, rather than being silently ignored.
 - Never commit a `.env` or a real key. Never read the user's real `.env` in tests; `LoadSettingsTests` changes into a temp folder and redirects `Path.home()`.
 

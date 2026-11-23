@@ -2,6 +2,10 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
+## Unreleased
+
+- **Settings on the Admin page:** a **Settings** tab (new `settings.manage` permission; Admin has it) changes about twenty server settings without editing `.env`: Convert and Download defaults, retries, speed limit, hours, taking turns between sites, sign-in, history and audit days apply at once; conversions and downloads at once, image threads, watch folders and the start-up scan are saved and used after a restart, and the page says so. A setting given in `.env`, the environment or a flag is locked and shows where it's set. Start-up, security, path and secret settings stay in `.env` only, and `HARBOR_WATCH_DELETE_ORIGINAL` is shown but not changeable. Every change is in the audit log; values live in the accounts database (migration 9), and harbor prints which ones it used at start-up.
+
 ## 0.2.6
 
 Pins cbz-webp 0.5.1, dl-queue 0.6.1 and cbz-shelf 0.6.0.

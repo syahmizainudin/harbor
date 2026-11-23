@@ -239,12 +239,34 @@ def cmd_ui(args) -> int:
     except (OSError, sqlite3.Error) as e:
         print(f"harbor: cannot open the library database: {e}", file=sys.stderr)
         return 2
+    accounts = None
+    if settings.accounts:
+        try:
+            accounts = Accounts(
+                _path(settings.accounts_db, default_accounts_db()),
+                settings.session_days,
+                settings.secure_cookie,
+                settings.audit_days,
+            )
+        except (OSError, sqlite3.Error) as e:
+            print(f"harbor: cannot open the accounts database: {e}", file=sys.stderr)
+            library.close()
+            return 2
+        from .livesettings import apply_saved
+
+        # Before anything uses them: settings saved on the Admin page (not those set in .env).
+        if used := apply_saved(settings, accounts.saved_settings()):
+            accounts.session_seconds = settings.session_days * 86400
+            accounts.audit_days = settings.audit_days
+            print(f"harbor: settings from the Admin page: {', '.join(used)}", flush=True)
     store = QueueStore(_path(settings.state_file, default_state_file()))
     owners = JobOwners()  # who queued each job, shared by the hand-off, the saved state and the API
     try:
         history = History(_path(settings.history_db, default_history_db()), settings.history_days, owners)
     except (OSError, sqlite3.Error) as e:
         print(f"harbor: cannot open the history database: {e}", file=sys.stderr)
+        if accounts:
+            accounts.close()
         library.close()
         return 2
 
@@ -282,19 +304,7 @@ def cmd_ui(args) -> int:
         history.close()
         library.close()  # last: a finishing conversion may still add a book
 
-    accounts = None
-    if settings.accounts:
-        try:
-            accounts = Accounts(
-                _path(settings.accounts_db, default_accounts_db()),
-                settings.session_days,
-                settings.secure_cookie,
-                settings.audit_days,
-            )
-        except (OSError, sqlite3.Error) as e:
-            print(f"harbor: cannot open the accounts database: {e}", file=sys.stderr)
-            close_all(save=False)
-            return 2
+    if accounts is not None:
         from .app import queue_lanes
 
         dq.set_lanes(queue_lanes(accounts))  # before restoring saved jobs, which may name a lane

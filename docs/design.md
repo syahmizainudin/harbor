@@ -94,7 +94,7 @@ Every page and API goes through cbz-webp's shared server (`serve`), in this orde
 | A permission check on a queue action | `perms.GuardedQueueAPI`. Actions it doesn't list pass through, so a new one needs its check here |
 | An admin action | `admin.AdminAPI`: check the permission, keep the no-escalation rule, write an audit line |
 | A per-user setting | `accounts.PREFS` or `PRESET_FIELDS`, validated, never a secret |
-| A server setting | `config.VARS` with a validator, plus `.env.example` |
+| A server setting | `config.VARS` with a validator, plus `.env.example`. If admins may change it on the page, add it to `livesettings.EDITABLE` (and to `_apply` if it can change while running) |
 | A schema change | One new step in `accounts.MIGRATIONS`; never drop user data |
 | A new `/api/state` key the page reads | Pinned in `test_page_and_merged_state` and listed in `AGENTS.md` |
 

@@ -119,6 +119,15 @@
   .lane-roles { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; flex-basis: 100%; font-size: 13px; }
   .lane-roles label { display: inline-flex; gap: 5px; align-items: center; font-weight: normal; }
   .lane-roles input { width: auto; flex: none; min-width: 0; margin: 0; }
+  /* admin: server settings */
+  .set-group { margin: 18px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .set-row { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(180px, 280px) 140px; gap: 6px 12px; align-items: center;
+             padding: 8px 0; border-top: 1px solid var(--line); }
+  .set-row .env { display: block; color: var(--muted); font-size: 12px; }
+  .set-row input, .set-row select { width: 100%; }
+  .set-row .set-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+  .set-row .set-note b { color: var(--warn); font-weight: 600; }
+  @media (max-width: 640px) { .set-row { grid-template-columns: 1fr; } }
   .chip b { color: var(--text); }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   table { width: 100%; border-collapse: collapse; }
@@ -428,6 +437,11 @@
       </form>
       <div class="msg" id="admLanesMsg"></div>
     </section>
+    <section class="panel" id="admSettingsBox" hidden>
+      <div class="bar-head"><strong>Settings</strong><span class="note">Server settings you can change here. A setting given in .env (or the environment) is locked: remove it there to manage it here. Some apply at once; the others are saved and used after harbor restarts. Start-up, security and path settings, and the API key, stay in .env.</span></div>
+      <div id="admSettings"></div>
+      <div class="msg" id="admSettingsMsg"></div>
+    </section>
     <section class="panel" id="admSeriesBox" hidden>
       <div class="bar-head"><strong>Series</strong>
         <input type="text" id="asFilter" placeholder="Filter series…" aria-label="Filter series" style="max-width:260px"></div>
@@ -595,7 +609,7 @@ const TAB_NEEDS = {
   convert: () => has("convert"),
   download: () => has("download"),
   library: () => has("library.read"),
-  admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit") || has("download.lanes")),
+  admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit") || has("download.lanes") || has("settings.manage")),
 };
 function applyPerms(next) {
   next = next ?? null;
@@ -617,6 +631,7 @@ function applyPerms(next) {
   admAllowed.series = has("library.edit") && perms !== null;
   admAllowed.audit = has("users.manage") && perms !== null;
   admAllowed.lanes = has("download.lanes") && perms !== null;
+  admAllowed.settings = has("settings.manage") && perms !== null;
   renderAdminTabs();
   if (!$("pane-admin").hidden) { loadAdminSeries(); loadAudit(); }
 }
@@ -1069,8 +1084,9 @@ const ADMIN_SECTIONS = [
   ["audit", "admAuditBox", "Audit log"],
   ["series", "admSeriesBox", "Series"],
   ["lanes", "admLanesBox", "Download lanes"],
+  ["settings", "admSettingsBox", "Settings"],
 ];
-const admAllowed = { users: false, roles: false, libs: false, audit: false, series: false, lanes: false };
+const admAllowed = { users: false, roles: false, libs: false, audit: false, series: false, lanes: false, settings: false };
 let admTab = store.get("adminTab", "");
 function renderAdminTabs() {
   const offered = ADMIN_SECTIONS.filter(([key]) => admAllowed[key]);
@@ -1137,7 +1153,54 @@ function renderAdmin(st) {
   window._admRoles = roles;
   renderAdminLibraries(st.admin_libraries, roles);
   renderAdminLanes(st.admin_lanes, st.download_lanes || [], st.lane_roles || []);
+  renderAdminSettings(st.admin_settings);
 }
+
+/* ---------- admin: server settings ---------- */
+let admSettingsKey = "";
+function renderAdminSettings(rows) {
+  if (!rows) return;
+  const key = JSON.stringify(rows);
+  if (key === admSettingsKey || $("admSettings").contains(document.activeElement)) return;
+  admSettingsKey = key;
+  let group = "";
+  const shown = (r, v) => r.name === "download_rate" && /^\d+$/.test(v) ? (rateText(+v) || "0") : v;
+  rows = rows.map(r => ({ ...r, value: shown(r, r.value), running: shown(r, r.running), default: shown(r, r.default) }));
+  setHTML($("admSettings"), rows.map(r => {
+    const head = r.group !== group ? `<div class="set-group">${esc(group = r.group)}</div>` : "";
+    const isBool = r.default === "true" || r.default === "false";
+    const off = r.locked ? " disabled" : "";
+    const input = isBool
+      ? `<select data-set="${r.name}" aria-label="${esc(r.label)}"${off}>${["true", "false"].map(v => `<option${v === r.value ? " selected" : ""}>${v}</option>`).join("")}</select>`
+      : `<input type="text" data-set="${r.name}" value="${esc(r.value)}" placeholder="${esc(r.default ? "default: " + r.default : "empty")}" aria-label="${esc(r.label)}"${off}>`;
+    const notes = [];
+    if (r.locked) notes.push(r.applies === "env" ? `Only in .env${r.locked !== ".env only" ? ` (set in ${esc(r.locked)})` : ""}.` : `Set in ${esc(r.locked)}.`);
+    else {
+      notes.push(r.saved !== null ? "Saved here." : `Default${r.default ? ": " + esc(r.default) : " (empty)"}.`);
+      if (r.applies === "restart") notes.push(r.running !== r.value ? `<b>Restart harbor to use it</b> (running with ${esc(r.running || "empty")}).` : "Applies after a restart.");
+    }
+    const buttons = r.locked ? "" : `<span class="actions"><button class="small" data-set-save="${r.name}">Save</button>${r.saved !== null ? ` <button class="small" data-set-reset="${r.name}">Default</button>` : ""}</span>`;
+    return `${head}<div class="set-row"><div>${esc(r.label)}<span class="env mono">${esc(r.env)}</span></div><div>${input}</div><div>${buttons}</div><div class="set-note">${notes.join(" ")}</div></div>`;
+  }).join(""));
+}
+async function saveSetting(name, value) {
+  try {
+    await api("/api/admin/setting-set", { name, value });
+    say($("admSettingsMsg"), value === "" ? "Back to the default." : "Saved.");
+    document.activeElement?.blur();  // the table redraws only when nothing in it has focus
+    admSettingsKey = "";
+    refresh();
+  } catch (err) { say($("admSettingsMsg"), err.message, true); }
+}
+$("admSettings").onclick = e => {
+  const save = e.target.closest("[data-set-save]"), reset = e.target.closest("[data-set-reset]");
+  if (save) saveSetting(save.dataset.setSave, document.querySelector(`[data-set="${save.dataset.setSave}"]`).value.trim());
+  if (reset) saveSetting(reset.dataset.setReset, "");
+};
+$("admSettings").onkeydown = e => {
+  const input = e.target.closest("input[data-set]");
+  if (input && e.key === "Enter") { e.preventDefault(); saveSetting(input.dataset.set, input.value.trim()); }
+};
 
 /* ---------- admin: download lanes ---------- */
 // Speeds are bytes a second; the form takes dl-queue's sizes ("500K", "5M").

@@ -13,6 +13,8 @@ libraries they can see, and only for roles within their own permissions.
 
 Download lanes (``download.lanes``): named lanes with their own downloads at once, speed limit,
 quiet hours and the roles that may use them. A change applies to the running download queue at once.
+
+Server settings (``settings.manage``): the Settings tab, through ``livesettings.LiveSettings``.
 """
 
 from __future__ import annotations
@@ -26,13 +28,15 @@ USER_ACTIONS = {"user-add", "user-role", "user-disable", "user-password", "user-
 ROLE_ACTIONS = {"role-add", "role-update", "role-remove", "library-access"}
 LANE_ACTIONS = {"lane-set", "lane-remove"}
 LANES = "download.lanes"
+SETTINGS = "settings.manage"
 
 
 class AdminAPI:
-    def __init__(self, accounts: Accounts, library=None, download_queue=None):
+    def __init__(self, accounts: Accounts, library=None, download_queue=None, live=None):
         self.accounts = accounts
         self.library = library
         self.download_queue = download_queue
+        self.live = live  # livesettings.LiveSettings, for the Settings tab
 
     def _libraries(self, me) -> list[dict]:
         """The libraries ``me`` can see, each with its access rule."""
@@ -65,6 +69,8 @@ class AdminAPI:
             out["lane_roles"] = [  # for "who can use it"; Admin always can
                 {"id": r["id"], "name": r["name"]} for r in self.accounts.roles() if r["id"] != ADMIN_ROLE
             ]
+        if SETTINGS in perms and self.live is not None:
+            out["admin_settings"] = self.live.rows()
         return out
 
     def _apply_lanes(self) -> None:
@@ -104,6 +110,8 @@ class AdminAPI:
             return 403, DENIED
         if action in LANE_ACTIONS and LANES not in mine:
             return 403, DENIED
+        if action == "setting-set" and SETTINGS not in mine:
+            return 403, DENIED
         acc = self.accounts
 
         def within(perms) -> bool:
@@ -124,6 +132,17 @@ class AdminAPI:
             return role
 
         try:
+            if action == "setting-set":
+                if self.live is None:
+                    return 404, {"error": "settings can't be changed here"}
+                name = str(body.get("name", ""))
+                old, new = self.live.set(name, body.get("value", ""))
+                from .config import VARS
+
+                acc.audit(
+                    "setting changed", VARS[name][0], f"{old or '(empty)'} → {new or '(empty)'}", actor=me
+                )
+                return 200, {"settings": self.live.rows()}
             if action == "lane-set":
                 lane = acc.set_lane(
                     str(body.get("name", "")),

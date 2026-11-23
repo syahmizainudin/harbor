@@ -111,6 +111,9 @@ class Settings:
     watch_delete_original: bool = False  # never follows HARBOR_DELETE_ORIGINAL: nobody reviews these
     watch_poll: int = 30  # seconds between checks of the watch folders
     source: str | None = None  # the .env file used, for the startup message
+    # Settings given explicitly (name -> where: the .env path, "environment" or "command line").
+    # Those are locked on the Admin page's Settings tab.
+    explicit: dict = field(default_factory=dict, repr=False, compare=False)
 
     def page_defaults(self) -> dict:
         """What the page may know. Never includes the key itself."""
@@ -319,9 +322,11 @@ def load_settings(
         for layer, label in ((file_values, str(path)), (environ, "environment")):
             if var in layer and layer[var] != "":
                 setattr(s, name, conv(layer[var], f"{var} ({label})"))
+                s.explicit[name] = label
     for name, value in (flags or {}).items():
         if value is not None:
             setattr(s, name, value)
+            s.explicit[name] = "command line"
     return s
 
 

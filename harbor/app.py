@@ -386,9 +386,10 @@ def serve_harbor(
     settings = settings or Settings()
     owners = owners if owners is not None else JobOwners()
     guests = accounts is not None
+    convert_defaults = {"quality": settings.quality, "method": settings.method}  # changed live (Settings tab)
     apis = {
         "/api/": GuardedQueueAPI(
-            ConvertAPI(convert_queue, {"quality": settings.quality, "method": settings.method}),
+            ConvertAPI(convert_queue, convert_defaults),
             convert_queue,
             "convert",
             owners,
@@ -420,7 +421,10 @@ def serve_harbor(
     auth = None
     if accounts is not None:
         apis["/api/account/"] = AccountAPI(accounts)
-        apis["/api/admin/"] = AdminAPI(accounts, library, download_queue)
+        from .livesettings import LiveSettings
+
+        live = LiveSettings(settings, accounts, convert_defaults, download_queue, history)
+        apis["/api/admin/"] = AdminAPI(accounts, library, download_queue, live)
         pages["/login"] = LOGIN_HTML
         auth = HarborSignIn(accounts)
     from .config import host_list

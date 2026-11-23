@@ -60,6 +60,7 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
   | `download.lanes` | The Admin tab's Download lanes section: add, change and remove lanes, choose who can use each, and pause or resume one lane |
   | `users.manage` | The Admin tab's Users section |
   | `roles.manage` | The Admin tab's roles and permissions matrix |
+  | `settings.manage` | The Admin tab's Settings section: change server settings not locked in `.env` |
 
   The folder browser needs `convert`, `download` or `library.manage`. Someone who manages users or roles but isn't an admin can only hand out permissions they have themselves, so they can't make anyone (or themselves) an admin.
 - **Your defaults:** the Convert and Download fields (quality, effort, deleting originals, download folder, how the API key is sent, converting downloads) are saved with your account as you change them, so they follow you to any browser and the Chrome extension uses them. **Account → Go back to harbor's defaults** returns to the `.env` values. The text reader's size, width and colours are saved with your account too. The API key itself is never saved per user.
@@ -241,6 +242,15 @@ The file is plain `KEY=value` lines. `#` starts a comment, values may be quoted,
 - The page is only told that a key exists. It shows "Using the key from .env" and uses that key whenever the key field is left empty. A key typed into the page is used instead.
 - The key is never shown, never added to the queue state, and never stored in the browser.
 - `.env` files are git-ignored here. Keep it that way, and keep the file private (`chmod 600 .env`).
+
+### Changing settings on the Admin page
+
+With accounts, someone with the `settings.manage` permission (Admin has it) can change about twenty settings on the Admin page's **Settings** tab: the Convert and Download defaults, downloads and conversions at once, retries, the speed limit and hours, taking turns between sites, watch folders, and how long sign-ins, history and the audit log last.
+
+- **`.env` wins.** A setting given in `.env`, the environment or a flag is shown locked, with where it's set. To manage it on the page, remove it from `.env` and restart.
+- **Most apply at once.** Conversions and downloads at once, image threads, watch folders and the start-up library scan are saved and used after a restart; the page says when a restart is needed.
+- **Some stay in `.env` only:** the port and address, HTTPS and proxy settings, accounts and cookie settings, database and state file paths, the extension origins, the API key, and `HARBOR_WATCH_DELETE_ORIGINAL` (shown, not changeable), because it deletes files with nobody reviewing them.
+- Every change goes in the audit log. Values are stored in the accounts database; at start-up harbor prints which ones it used.
 
 With accounts, each user's own defaults win over these values. Without accounts, values in the file fill the Download tab's fields only when this browser hasn't remembered its own value. To go back to the file's values, clear the site's data in the browser.
 

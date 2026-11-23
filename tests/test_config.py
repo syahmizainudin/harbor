@@ -92,6 +92,26 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertIsNone(s.source)
         self.assertEqual((s.port, s.quality, s.jobs, s.downloads, s.api_key), (8765, 80, 1, 2, ""))
 
+    def test_explicit_settings_are_recorded(self):
+        path = self.write("HARBOR_QUALITY=70\nHARBOR_DOWNLOAD_HOURS=\n")
+        s = load_settings({"jobs": 2, "threads": None}, environ={"HARBOR_RETRIES": "5"})
+        self.assertEqual(
+            s.explicit, {"quality": str(path.resolve()), "retries": "environment", "jobs": "command line"}
+        )
+
+    def test_saved_admin_settings_skip_locked_and_bad_ones(self):
+        from harbor.livesettings import apply_saved
+
+        self.write("HARBOR_QUALITY=70\n")
+        s = load_settings(environ={})
+        with mock.patch("builtins.print") as said:
+            used = apply_saved(
+                s, {"quality": "50", "downloads": "4", "method": "9", "port": "1", "download_fair": "true"}
+            )
+        self.assertEqual(sorted(used), ["download_fair", "downloads"])
+        self.assertEqual((s.quality, s.downloads, s.method, s.port, s.download_fair), (70, 4, 4, 8765, True))
+        self.assertIn("HARBOR_METHOD", said.call_args[0][0])
+
     def test_reads_cwd_env(self):
         self.write("HARBOR_QUALITY=65\nHARBOR_DELETE_ORIGINAL=no\nHARBOR_AUTH_MODE=header\n")
         s = load_settings(environ={})
