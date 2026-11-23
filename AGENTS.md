@@ -27,6 +27,8 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/perms.py` | `GuardedQueueAPI` (permissions on the queue APIs), `JobOwners` (who queued each job), `can` |
 | `harbor/admin.py` | `AdminAPI` at `/api/admin/`: users and roles, with the no-escalation rule |
 | `docs/plan-users.md` | The plan for accounts, permissions and per-user settings, phase by phase |
+| `docs/planned-features.md` | Planned work not started yet: what's settled and what's open, one entry per feature |
+| `docs/plan-games.md` | The plan for the RPG Maker MV/MZ library and player (`rpgm-shelf`), with the phase 0 prototype results |
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
 | `ecosystem.config.cjs` | pm2 config that keeps harbor running |
