@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 import signal
 import sys
+import threading
 import webbrowser
 
 from . import __version__
@@ -304,6 +305,8 @@ def cmd_ui(args) -> int:
 
     watcher = None
 
+    games: list = []  # (rpgm-shelf Library, GameServer) once started
+
     def close_all(save: bool) -> None:
         """Stop everything, in this order. ``save=False`` keeps the saved jobs from the last run."""
         if watcher:
@@ -316,6 +319,9 @@ def cmd_ui(args) -> int:
         cq.shutdown()
         history.close()
         library.close()  # last: a finishing conversion may still add a book
+        if games:  # independent of the queues
+            games[1].stop()
+            games[0].close()
 
     if accounts is not None:
         from .app import queue_lanes
@@ -329,9 +335,42 @@ def cmd_ui(args) -> int:
             print(
                 f"harbor: gave {moved} reading record(s) from before accounts to {admin['name']}", flush=True
             )
+    if settings.games:
+        from rpgmshelf.gameserver import GameServer
+        from rpgmshelf.library import Library as GamesLibrary
+
+        from .app import default_games_db
+
+        try:
+            games_lib = GamesLibrary(_path(settings.games_db, default_games_db()))
+        except (OSError, sqlite3.Error) as e:
+            print(f"harbor: cannot open the games database: {e}", file=sys.stderr)
+            close_all(save=False)
+            return 2
+        try:
+            # Games never run on harbor's own port: a game is untrusted JavaScript (rpgm-shelf).
+            games[:] = [games_lib, GameServer(games_lib, settings.games_port).start()]
+        except OSError as e:
+            games_lib.close()
+            print(f"harbor: cannot listen on 127.0.0.1:{settings.games_port} for games: {e}", file=sys.stderr)
+            print("harbor: set HARBOR_GAMES_PORT to a free port, or HARBOR_GAMES=false", file=sys.stderr)
+            close_all(save=False)
+            return 2
+        if settings.games_scan and games_lib.roots():
+            threading.Thread(target=games_lib.scan, name="games-scan", daemon=True).start()
     try:
         server = serve_harbor(
-            settings.port, cq, dq, settings, notes, library, accounts, owners, history, site_keys
+            settings.port,
+            cq,
+            dq,
+            settings,
+            notes,
+            library,
+            accounts,
+            owners,
+            history,
+            site_keys,
+            tuple(games) or None,
         )
     except (OSError, ValueError) as e:  # ssl.SSLError is an OSError: a bad certificate or key
         print(f"harbor: cannot listen on {settings.host}:{settings.port}: {e}", file=sys.stderr)
@@ -365,8 +404,6 @@ def cmd_ui(args) -> int:
         print(f"harbor: reachable from other devices as {names} (listening on {settings.host})", flush=True)
     local = getattr(server, "local_server", None)
     if local is not None:
-        import threading
-
         threading.Thread(target=local.serve_forever, name="local-http", daemon=True).start()
         print(
             f"harbor: for this computer and the Chrome extension: http://127.0.0.1:{settings.local_port}/",

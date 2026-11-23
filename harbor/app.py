@@ -53,6 +53,13 @@ def missing_dependencies() -> list[str]:
         import cbzwebp.watch  # noqa: F401
     except ImportError:
         missing.append("cbz-webp watch folders")
+    try:
+        from rpgmshelf.gameserver import GameServer
+
+        if "frame_ancestors" not in inspect.signature(GameServer).parameters:
+            missing.append("rpgm-shelf GameServer(frame_ancestors=...)")
+    except ImportError:
+        missing.append("rpgm-shelf (the Games tab)")
     for name in ("give_user_data", "scan_file", "libraries", "book_file"):
         if not hasattr(Library, name):
             missing.append(f"cbz-shelf Library.{name}")
@@ -397,6 +404,44 @@ class AuditedLibraryAPI:
         return (status, result, *extra)
 
 
+class AuditedGamesAPI:
+    """rpgm-shelf's GamesAPI, recording game folder changes in the audit log."""
+
+    EVENTS: ClassVar[dict[str, str]] = {
+        "add-root": "games folder added",
+        "remove-root": "games folder removed",
+    }
+
+    def __init__(self, inner, accounts, games_lib):
+        self.inner, self.accounts, self.games_lib = inner, accounts, games_lib
+
+    def state(self) -> dict:
+        return self.inner.state()
+
+    def get(self, action: str, query: dict):
+        return self.inner.get(action, query)
+
+    def post(self, action: str, body: dict):
+        from cbzwebp.web import current_user
+
+        event = self.EVENTS.get(action)
+        if event is None:
+            return self.inner.post(action, body)
+        roots = {r["id"]: r["path"] for r in self.games_lib.roots()}
+        status, result = self.inner.post(action, body)
+        if status == 200:
+            if action == "add-root":
+                target, detail = result.get("path", ""), f"{result.get('games', 0)} game(s)"
+            else:
+                target, detail = roots.get(_int_or(body.get("id")), ""), "saves kept"
+            self.accounts.audit(event, target, detail, actor=current_user())
+        return status, result
+
+
+def default_games_db() -> Path:
+    return xdg_path("XDG_DATA_HOME", "harbor", "games.db")
+
+
 def _int_or(v):
     try:
         return int(v)
@@ -423,6 +468,7 @@ def serve_harbor(
     owners=None,
     history=None,
     site_keys=None,
+    games=None,
 ) -> ThreadingHTTPServer:
     """The page: convert at /api/, downloads at /api/download/, page defaults at /api/harbor/, and
     with a library, cbz-shelf's API at /api/library/ and its page at /library (the Library tab).
@@ -467,6 +513,24 @@ def serve_harbor(
             library_api = GuestSafeLibraryAPI(AuditedLibraryAPI(library_api, accounts, library))
         apis["/api/library/"] = library_api
         pages["/library"] = LIBRARY_HTML
+    if games is not None:  # (rpgm-shelf Library, GameServer): the Games tab
+        from rpgmshelf.web import UI_HTML as GAMES_HTML
+        from rpgmshelf.web import GamesAPI
+
+        games_lib, game_server = games
+
+        def games_user():
+            """The harbor user a play token and saves belong to (0 without accounts)."""
+            from cbzwebp.web import current_user
+
+            user = current_user()
+            return int(user["id"]) if user else (None if guests else 0)
+
+        games_api = GamesAPI(games_lib, game_server, user_of=games_user, can=guest_can if guests else can)
+        if guests:
+            games_api = AuditedGamesAPI(games_api, accounts, games_lib)
+        apis["/api/games/"] = games_api
+        pages["/games"] = GAMES_HTML
     auth = None
     if accounts is not None:
         apis["/api/account/"] = AccountAPI(accounts, site_keys)

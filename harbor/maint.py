@@ -23,13 +23,13 @@ from pathlib import Path
 from .config import Settings, xdg_path
 
 BACKUP_NAME = re.compile(r"^\d{8}-\d{6}$")
-PINNED = {"cbz-webp": "cbzwebp", "dl-queue": "dlqueue", "cbz-shelf": "cbzshelf"}
+PINNED = {"cbz-webp": "cbzwebp", "dl-queue": "dlqueue", "cbz-shelf": "cbzshelf", "rpgm-shelf": "rpgmshelf"}
 
 
 def data_files(settings: Settings) -> dict[str, Path]:
     """harbor's databases and saved-jobs file, by label, as the settings place them."""
     from .accounts import default_accounts_db
-    from .app import default_library_db
+    from .app import default_games_db, default_library_db
     from .history import default_history_db
     from .state import default_state_file
 
@@ -40,6 +40,7 @@ def data_files(settings: Settings) -> dict[str, Path]:
         "accounts": path(settings.accounts_db, default_accounts_db()),
         "library": path(settings.library_db, default_library_db()),
         "history": path(settings.history_db, default_history_db()),
+        "games": path(settings.games_db, default_games_db()),
         "saved jobs": path(settings.state_file, default_state_file()),
     }
 
@@ -181,9 +182,15 @@ def doctor(settings: Settings) -> list[tuple[str, str]]:
         expected["library"] = len(L.MIGRATIONS)
     except ImportError:  # already reported above; the library's schema can't be compared
         pass
-    for label in ("accounts", "library", "history"):
+    try:
+        from rpgmshelf import library as G
+
+        expected["games"] = len(G.MIGRATIONS)
+    except ImportError:
+        pass
+    for label in ("accounts", "library", "history", "games"):
         path = files[label]
-        if label == "accounts" and not settings.accounts:
+        if (label == "accounts" and not settings.accounts) or (label == "games" and not settings.games):
             continue
         if not path.is_file():
             add((OK, f"{label} database not created yet ({path})"))

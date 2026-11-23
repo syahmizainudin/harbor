@@ -26,6 +26,18 @@ class HttpBase(unittest.TestCase):
 
     EXPLICIT: ClassVar[dict] = {}  # settings "given in .env", locked on the Settings tab
     SITE_KEYS = False  # saved site keys on (secret.key in the temp folder)
+    GAMES = False  # the Games tab on (rpgm-shelf, a games server on a free port)
+
+    def _games(self):
+        self.games = None
+        if not self.GAMES:
+            return None
+        from rpgmshelf.gameserver import GameServer
+        from rpgmshelf.library import Library as GamesLibrary
+
+        lib = GamesLibrary(self.dir / "games.db")
+        self.games = (lib, GameServer(lib).start())
+        return self.games
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -61,6 +73,7 @@ class HttpBase(unittest.TestCase):
             accounts=self.acc,
             owners=self.owners,
             site_keys=self.site_keys,
+            games=self._games(),
         )
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -69,6 +82,9 @@ class HttpBase(unittest.TestCase):
     def tearDown(self):
         self.server.shutdown()
         self.server.server_close()
+        if self.games:
+            self.games[1].stop()
+            self.games[0].close()
         self.dq.shutdown()
         self.cq.shutdown()
         self.lib.close()

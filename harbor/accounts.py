@@ -23,7 +23,6 @@ import secrets
 import sqlite3
 import threading
 import time
-from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 
 from .config import xdg_path
@@ -109,6 +108,13 @@ MIGRATIONS: list[str] = [
            label TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL DEFAULT '',
            mode TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', secret BLOB NOT NULL,
            created_at REAL NOT NULL, updated_at REAL NOT NULL)""",
+    # 11: the Games tab. Roles that may read the library and download (Member, by default) may
+    # also play games. Reader stays read-only; Admin has everything anyway.
+    """UPDATE roles SET perms_json = json_insert(perms_json, '$[#]', 'games.play')
+       WHERE locked = 0
+         AND EXISTS (SELECT 1 FROM json_each(roles.perms_json) WHERE value = 'library.read')
+         AND EXISTS (SELECT 1 FROM json_each(roles.perms_json) WHERE value = 'download')
+         AND NOT EXISTS (SELECT 1 FROM json_each(roles.perms_json) WHERE value = 'games.play')""",
 ]
 LANES_MAX = 20
 TOKEN_SCOPES = {"extension": "Chrome extension", "reader": "Reader app"}
@@ -136,6 +142,8 @@ PERMISSIONS = [
     ("jobs.see_all", "See and manage everyone's jobs"),
     ("download.lanes", "Manage download lanes"),
     ("settings.manage", "Change server settings"),
+    ("games.play", "Play games (own saves)"),
+    ("games.manage", "Manage game folders and scans"),
     ("users.manage", "Manage users"),
     ("roles.manage", "Manage roles and permissions"),
 ]
@@ -854,13 +862,28 @@ class Accounts:
         return user
 
 
-def session_id(headers) -> str:
+SESSION_COOKIES_MAX = 4
+
+
+def session_ids(headers) -> list[str]:
+    """Every ``harbor_session`` value in the request, in order. A page on another port of the same
+    host (a game) can set a cookie of that name, and browsers then send both; a parser that keeps
+    one could pick the planted one. ``HarborSignIn.user`` tries each (at most a few)."""
     raw = headers.get("Cookie", "") if headers else ""
-    try:
-        jar = SimpleCookie(raw)
-    except CookieError:
-        return ""
-    return jar[COOKIE].value if COOKIE in jar else ""
+    out = []
+    for part in raw.split(";"):
+        name, sep, value = part.strip().partition("=")
+        if sep and name.strip() == COOKIE:
+            value = value.strip().strip('"')
+            if value and value not in out:
+                out.append(value)
+    return out[:SESSION_COOKIES_MAX]
+
+
+def session_id(headers) -> str:
+    """The first ``harbor_session`` value ('' if none). Use ``session_ids`` to sign in."""
+    ids = session_ids(headers)
+    return ids[0] if ids else ""
 
 
 def basic_credentials(header: str) -> tuple[str, str] | None:
@@ -914,10 +937,12 @@ class HarborSignIn:
             return self.accounts.token_user(basic[1], scope="reader", name=basic[0])
         if token:
             return self.accounts.token_user(token)  # with "prefs", from the same query
-        sid = session_id(headers)
-        user = self.accounts.session_user(sid)
-        # The session id rides along for sign-out and password changes; AccountAPI never shows it.
-        return user and {**user, "_sid": sid}
+        for sid in session_ids(headers):  # a planted cookie of the same name can't hide the real one
+            user = self.accounts.session_user(sid)
+            if user:
+                # The session id rides along for sign-out and password changes; AccountAPI never shows it.
+                return {**user, "_sid": sid}
+        return None
 
 
 class AccountAPI:

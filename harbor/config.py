@@ -110,6 +110,10 @@ class Settings:
     watch_dirs: str = ""  # folders whose new archives are converted on their own, ";"-separated
     watch_delete_original: bool = False  # never follows HARBOR_DELETE_ORIGINAL: nobody reviews these
     watch_poll: int = 30  # seconds between checks of the watch folders
+    games: bool = True  # the Games tab (rpgm-shelf) and its games server
+    games_port: int = 8768  # the games server, on 127.0.0.1 only: games never run on harbor's port
+    games_db: str = ""  # default ~/.local/share/harbor/games.db
+    games_scan: bool = True  # rescan the game folders at start-up
     source: str | None = None  # the .env file used, for the startup message
     # Settings given explicitly (name -> where: the .env path, "environment" or "command line").
     # Those are locked on the Admin page's Settings tab.
@@ -254,6 +258,10 @@ VARS = {
     "watch_dirs": ("HARBOR_WATCH_DIRS", _text),
     "watch_delete_original": ("HARBOR_WATCH_DELETE_ORIGINAL", _bool),
     "watch_poll": ("HARBOR_WATCH_POLL", _int(5, 3600)),
+    "games": ("HARBOR_GAMES", _bool),
+    "games_port": ("HARBOR_GAMES_PORT", _int(1, 65535)),
+    "games_db": ("HARBOR_GAMES_DB", _text),
+    "games_scan": ("HARBOR_GAMES_SCAN", _bool),
 }
 
 

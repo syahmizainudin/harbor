@@ -11,6 +11,7 @@ Harbor serves two public tools on one two-tab local page and connects them: a fi
 | `harbor` (this one, private) | The combined page, the download → convert hand-off, and the `harbor` command |
 | `cbz-webp` (public) | The converter: `JobQueue`, `ConvertAPI`, and the generic server `serve` that harbor uses |
 | `cbz-shelf` (public) | The library and reader: `Library`, `LibraryAPI` and its page, served at `/library` in harbor's Library tab |
+| `rpgm-shelf` (public) | RPG Maker MV games: `Library` (folders, games, saves per user), `GameServer` (games on their own port, play tokens), `GamesAPI` and its page, served at `/games` in harbor's Games tab |
 | `dl-queue` (public) | The downloader: `DownloadQueue` with the `on_saved` and `check_after` hooks, `Auth`, `DownloadAPI` |
 
 Both are dependencies in `pyproject.toml`, pinned by git tag.
@@ -50,7 +51,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
   2. Release it there (tag `v<version>`).
   3. Bump the tag in this repo's `pyproject.toml`.
 - **The page is harbor's own.** It is the union of the two tools' pages: the Convert tab is `cbzwebp/ui.html`'s body and the Download tab is `dlqueue/ui.html`'s, plus the tabs and the "Convert downloads" option. When either tool's page changes, carry the change over here by hand.
-- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers`, `download_rate`, `download_fair`, `download_hours`, `download_waiting`, `download_lanes` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
+- **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers`, `download_rate`, `download_fair`, `download_hours`, `download_waiting`, `download_lanes` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf), and in the Games frame `games`, `games_roots`, `games_can` (rpgm-shelf; only with `HARBOR_GAMES`, and the page shows the Games tab only when `games_can` is there). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
 
 ## The rules of the two tools still apply
 
@@ -63,6 +64,15 @@ Downloads and conversions write and delete the user's files, and the API key is 
 - **Settings on the Admin page** (`livesettings.py`, migration 9 `settings`, permission `settings.manage`): only names in `EDITABLE` can be changed there, checked with the same `config.VARS` validator and stored as `.env` text. A setting in `Settings.explicit` (given in `.env`, the environment or a flag) is locked. `cli.cmd_ui` opens the accounts database before building the queues and calls `apply_saved`, so "restart" settings take effect at start. "now" settings change the running objects in `LiveSettings._apply`. Never add a start-up, security, path or secret setting (port, host, TLS, trust proxy, accounts, databases, extension origins, `api_key`) to `EDITABLE`, and keep `watch_delete_original` read-only. Each change is audited (`setting changed`, old → new); values there are never secret.
 - Every setting goes through `config.VARS` with a validator. A bad value or a misspelled `HARBOR_` name stops startup with the file and setting named, rather than being silently ignored.
 - Never commit a `.env` or a real key. Never read the user's real `.env` in tests; `LoadSettingsTests` changes into a temp folder and redirects `Path.home()`.
+
+## The Games tab (rpgm-shelf)
+
+- **A game is untrusted JavaScript, so it never runs on harbor's port.** `cli.cmd_ui` starts rpgm-shelf's `GameServer` on `HARBOR_GAMES_PORT` (127.0.0.1 only, never `HARBOR_HOST`) and stops it in `close_all`. Harbor serves only the games library page (`/games`) and `GamesAPI` (`/api/games/`); game files and saves are only on the games server. Never mount game files on harbor's server, and follow rpgm-shelf's AGENTS.md rules (no cookies read there, nothing logged, tokens only).
+- **Play tokens** are minted by `GamesAPI` `play` for the request's harbor user (`games_user`: the user id, None for a guest, 0 without accounts); saves belong to that user id. Permissions: `games.play` (see games, play, own saves), `games.manage` (folders, scans); guests get neither and `/api/games/` isn't in `guest_may`. Migration 11 gives `games.play` to roles that have both `library.read` and `download` (Member), not Reader.
+- **Audit:** `AuditedGamesAPI` records `games folder added` / `games folder removed`.
+- **Cookies.** Browsers send a host's cookies to every port, and a game can *set* a cookie for the host. `session_ids` reads every `harbor_session` value and `HarborSignIn.user` tries each, so a planted one can't hide the real session (`PlantedCookieTests`). The games page opens games under the other loopback name (`localhost` / `127.0.0.1`), so on this computer the two don't even share cookies; with one shared host name (Tailscale, later) they do, and these two rules are what protect harbor.
+- **Remote use:** not yet. The games server listens on 127.0.0.1 only, and the page says so when opened from another device. Serving it remotely needs its own address and `check_reach` rules (plan: `docs/plan-games.md`).
+- `harbor doctor` and `harbor backup` include `games.db` (`HARBOR_GAMES_DB`). Tests: `tests/test_games_tab.py` (`HttpBase.GAMES`).
 
 ## The Library tab
 

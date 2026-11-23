@@ -1,6 +1,6 @@
 # Plan: an RPG Maker MV/MZ library and player
 
-Status: phase 1 built 2026-11-23 in the new `rpgm-shelf` repo (0.1.0, not published yet). Phase 2 (harbor's Games tab) is next. Option A (a separate games server) was chosen in phase 0.
+Status: phase 1 released 2026-11-23 (`rpgm-shelf` 0.1.0, public). Phase 2 (harbor's Games tab) built 2026-11-23, waiting for release with rpgm-shelf 0.1.1. Option A (a separate games server) was chosen in phase 0.
 
 ## What was asked
 
@@ -80,6 +80,8 @@ No real game was available, so the prototype used a generated MV game: the MIT-l
 - Permissions: `games.play` (open games, own saves), `games.manage` (folders, scans). Guests: none, at least at first.
 - Play-token minting, audit lines for folder changes, tests in `test_permissions.py` and `test_accounts.py`.
 - Games server start and stop in `cli.cmd_ui`, settings through `config.VARS`, `check_reach` cases in `tests/test_reach.py`, `harbor doctor` and `harbor backup` covering the new database.
+
+**Phase 2 built 2026-11-23:** the Games tab framing `/games`, `GamesAPI(user_of=, can=)` with harbor's users and permissions (`games.play` given to Member by migration 11, `games.manage`), audit lines for folder changes, the games server started and stopped by `cli.cmd_ui` on `HARBOR_GAMES_PORT` (127.0.0.1 only), `HARBOR_GAMES`/`_DB`/`_SCAN`, doctor and backup covering `games.db`, and decision 4's cookie rule: harbor tries every `harbor_session` value, so a planted cookie can't hide the real one. Not done: remote play (needs the games server served through the proxy or `tailscale serve`, and `check_reach` rules).
 
 ### Phase 3: manager extras
 

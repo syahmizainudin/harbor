@@ -89,7 +89,8 @@
   /* Until the first /api/state says what this visitor may use, show no tabs and no pane, so a
      signed-out visitor never sees Convert or Download for a moment. render() removes the class. */
   body.loading .tabs, body.loading main { visibility: hidden; }
-  #libFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
+  #libFrame, #gamesFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
+  #pane-games { height: 100%; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   label, .label { display: block; font-weight: 600; margin-bottom: 6px; }
   .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
@@ -219,6 +220,7 @@
     <button class="tab" role="tab" id="tab-convert" aria-controls="pane-convert" data-tab="convert" title="Convert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg><span class="txt">Convert</span><span class="badge" id="badge-convert"></span></button>
     <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download" title="Download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span class="txt">Download</span><span class="badge" id="badge-download"></span></button>
     <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library" title="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 15M3 20h18"/></svg><span class="txt">Library</span></button>
+    <button class="tab" role="tab" id="tab-games" aria-controls="pane-games" data-tab="games" title="Games" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="12" rx="4"/><path d="M7 11v4M5 13h4M15.5 12.5h.01M18 14.5h.01"/></svg><span class="txt">Games</span></button>
     <button class="tab" role="tab" id="tab-admin" aria-controls="pane-admin" data-tab="admin" title="Admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg><span class="txt">Admin</span></button>
   </div>
   <div class="side-acct" id="acct" hidden>
@@ -457,6 +459,9 @@
   </div></div>
 
   <!-- ===================== Library (cbz-shelf, framed) ===================== -->
+  <div id="pane-games" role="tabpanel" aria-labelledby="tab-games" hidden>
+    <iframe id="gamesFrame" title="Games"></iframe>
+  </div>
   <div id="pane-library" role="tabpanel" aria-labelledby="tab-library" hidden>
     <iframe id="libFrame" title="Library" allow="fullscreen"></iframe>
   </div>
@@ -612,11 +617,12 @@ function showTab(name) {
   }
   // The library loads the first time its tab opens, not with every harbor page view.
   if (name === "library" && !$("libFrame").src) $("libFrame").src = "/library";
+  if (name === "games" && !$("gamesFrame").src) $("gamesFrame").src = "/games";
   if (name === "admin") setTimeout(() => { loadAdminSeries(); loadAudit(); });  // after the script has fully loaded
   store.set("tab", name);
 }
 for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
-showTab(["download", "library", "admin"].includes(store.get("tab")) ? store.get("tab") : "convert");
+showTab(["download", "library", "games", "admin"].includes(store.get("tab")) ? store.get("tab") : "convert");
 if (store.get("tab") === "admin") $("tab-admin").hidden = false;
 
 /* ---------- permissions ---------- */
@@ -629,6 +635,7 @@ const TAB_NEEDS = {
   convert: () => has("convert"),
   download: () => has("download"),
   library: () => has("library.read"),
+  games: () => gamesOn && (has("games.play") || has("games.manage")),
   admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit") || has("download.lanes") || has("settings.manage")),
 };
 function applyPerms(next) {
@@ -1076,8 +1083,10 @@ function historyTick(st) {
   for (const el of document.querySelectorAll(".hist .seeall")) el.hidden = perms === null || !has("jobs.see_all");
 }
 
+let gamesOn = false;  // the Games tab is on (HARBOR_GAMES): rpgm-shelf's state keys are there
 function render(st) {
   accountsOn = "account" in st;
+  if (gamesOn !== ("games_can" in st)) { gamesOn = "games_can" in st; $("tab-games").hidden = !TAB_NEEDS.games(); }
   if (!defaultsSet) {
     $("qr").value = $("qn").value = st.defaults.quality;
     $("method").value = st.defaults.method ?? 4;

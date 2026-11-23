@@ -148,7 +148,7 @@ class DoctorTests(Base):
 
     def test_pins_come_from_the_checkout(self):
         pins = maint._pins()
-        self.assertEqual(set(pins), {"cbz-webp", "dl-queue", "cbz-shelf"})
+        self.assertEqual(set(pins), {"cbz-webp", "dl-queue", "cbz-shelf", "rpgm-shelf"})
 
     def test_pins_from_installed_metadata(self):
         reqs = [
