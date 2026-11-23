@@ -277,6 +277,13 @@
       <label for="urls">File URLs (one per line; <span class="mono">{1..20}</span> in a URL makes one URL per number)</label>
       <textarea id="urls" placeholder="https://example.com/files/Chapter%2001.zip"></textarea>
 
+      <div class="row" id="presetRow">
+        <label for="preset" style="margin:0">Preset</label>
+        <select id="preset" title="Fill in the folder, API key mode and convert settings from a saved set"><option value="">None</option></select>
+        <button class="small" id="presetSave" type="button">Save as preset…</button>
+        <button class="small" id="presetDelete" type="button" hidden>Delete</button>
+      </div>
+
       <div class="grid">
         <div>
           <label for="dest">Save to folder</label>
@@ -619,7 +626,7 @@ $("pickerUse").onclick = () => {
     if (!lines.includes(p)) lines.push(p);
     $("paths").value = lines.join("\n");
   } else {
-    $("dest").value = p; store.set("dest", p); savePref({ download_dir: p });
+    $("dest").value = p; if (!activePreset) store.set("dest", p); savePref({ download_dir: p });
   }
   $("picker").close();
 };
@@ -667,8 +674,11 @@ let envKey = false;
 // With accounts, these fields are your own defaults, saved with your account ("harbor" and "defaults"
 // in the state already carry them). Without accounts, this browser remembers them, as before.
 let accountsOn = false, prefTimer = null, pendingPrefs = {};
+// While a preset is chosen, the download fields hold the preset's values: they aren't your defaults.
+const DOWNLOAD_PREFS = ["download_dir", "auth_mode", "auth_name", "convert_downloads"];
 function savePref(changes) {
-  if (!accountsOn) return;
+  if (activePreset) changes = Object.fromEntries(Object.entries(changes).filter(([k]) => !DOWNLOAD_PREFS.includes(k)));
+  if (!accountsOn || !Object.keys(changes).length) return;
   Object.assign(pendingPrefs, changes);
   clearTimeout(prefTimer);
   prefTimer = setTimeout(() => {
@@ -705,13 +715,83 @@ function authUI() {
 }
 function saveKey() { store.set("apiKey", $("rememberKey").checked && $("apiKey").value ? $("apiKey").value : null); }
 function convertNote() {
+  const a = downloadAfter(), from = activePreset ? `preset “${activePreset.name}”` : "the Convert tab's settings";
   $("dlConvertNote").textContent = $("dlConvert").checked
-    ? `Uses the Convert tab's settings: quality ${$("qn").value || "–"}%, effort ${$("method").value}, ${$("del").checked ? "downloaded .zip deleted after verify" : "downloaded .zip kept"}.`
+    ? `Uses ${from}: quality ${a.quality || "–"}%, effort ${a.method}, ${a.delete_original ? "downloaded .zip deleted after verify" : "downloaded .zip kept"}.`
     : "Files are only saved.";
 }
-$("authMode").onchange = () => { store.set("authMode", $("authMode").value); savePref({ auth_mode: $("authMode").value }); authUI(); };
-$("authName").oninput = () => { store.set("authName", $("authName").value.trim()); savePref({ auth_name: $("authName").value.trim() }); };
-$("dest").onchange = () => { store.set("dest", $("dest").value.trim()); savePref({ download_dir: $("dest").value.trim() }); };
+// What happens after a download: the chosen preset's convert settings, else the Convert tab's.
+function downloadAfter() {
+  const p = activePreset || {};
+  return {
+    convert: $("dlConvert").checked,
+    quality: p.quality ?? parseInt($("qn").value, 10),
+    method: p.method ?? +$("method").value,
+    delete_original: (p.delete_original ?? $("del").checked) && has("delete_original"),
+  };
+}
+
+/* ---------- download presets ---------- */
+// Named sets of download settings: folder, API key mode and name, and what to do after (never the
+// API key). With accounts they're saved with your account, and the Chrome extension can pick them;
+// without, this browser keeps them. Picking one fills in the form for this download only: your
+// defaults don't change.
+let presets = [], presetsJson = null, activePreset = null;
+function storedPresets() { try { return JSON.parse(store.get("presets", "[]")) || []; } catch { return []; } }
+function renderPresets(list) {
+  const json = JSON.stringify(list);
+  if (json === presetsJson) return;
+  presetsJson = json; presets = list;
+  const keep = $("preset").value;
+  $("preset").innerHTML = `<option value="">None</option>` + list.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("");
+  $("preset").value = list.some(p => p.name === keep) ? keep : "";
+  if (!$("preset").value && activePreset) { activePreset = null; convertNote(); }
+  $("presetDelete").hidden = !$("preset").value;
+}
+$("preset").onchange = () => {
+  const p = presets.find(x => x.name === $("preset").value) || null;
+  activePreset = p;
+  $("presetDelete").hidden = !p;
+  if (p) {
+    if ("download_dir" in p) $("dest").value = p.download_dir;
+    if ("auth_mode" in p) $("authMode").value = p.auth_mode;
+    if ("auth_name" in p) $("authName").value = p.auth_name;
+    if ("convert" in p) $("dlConvert").checked = p.convert && has("convert");
+    authUI();
+  }
+  convertNote();
+};
+async function savePresets(list, select) {
+  try {
+    if (accountsOn) await api("/api/account/prefs", { changes: { download_presets: list.length ? list : null } });
+    else store.set("presets", list.length ? JSON.stringify(list) : null);
+    renderPresets(list);
+    $("preset").value = select;
+    $("preset").onchange();
+    return true;
+  } catch (e) { say($("dlMsg"), "Couldn't save the presets: " + e.message, true); return false; }
+}
+$("presetSave").onclick = async () => {
+  const name = (prompt("Name for this preset (the API key is never saved in it):", $("preset").value) || "").trim();
+  if (!name) return;
+  if (name.length > 60) return say($("dlMsg"), "A preset name can be at most 60 characters.", true);
+  const same = presets.find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (same && !confirm(`Replace the preset “${same.name}”?`)) return;
+  if (!same && presets.length >= 20) return say($("dlMsg"), "You can keep up to 20 presets. Delete one first.", true);
+  const a = downloadAfter();
+  const p = { name, download_dir: $("dest").value.trim(), auth_mode: $("authMode").value, auth_name: $("authName").value.trim(), convert: a.convert, method: a.method, delete_original: a.delete_original };
+  if (a.quality >= 1 && a.quality <= 100) p.quality = a.quality;
+  const list = presets.filter(x => x !== same).concat(p).sort((x, y) => x.name.localeCompare(y.name));
+  if (await savePresets(list, name)) say($("dlMsg"), `Saved the preset “${name}”.`);
+};
+$("presetDelete").onclick = async () => {
+  const name = $("preset").value;
+  if (!name || !confirm(`Delete the preset “${name}”? Downloads already queued aren't affected.`)) return;
+  if (await savePresets(presets.filter(x => x.name !== name), "")) say($("dlMsg"), `Deleted the preset “${name}”.`);
+};
+$("authMode").onchange = () => { if (!activePreset) store.set("authMode", $("authMode").value); savePref({ auth_mode: $("authMode").value }); authUI(); };
+$("authName").oninput = () => { if (!activePreset) store.set("authName", $("authName").value.trim()); savePref({ auth_name: $("authName").value.trim() }); };
+$("dest").onchange = () => { if (!activePreset) store.set("dest", $("dest").value.trim()); savePref({ download_dir: $("dest").value.trim() }); };
 $("rememberKey").onchange = saveKey;
 $("apiKey").oninput = saveKey;
 $("showKey").onclick = () => {
@@ -734,11 +814,13 @@ $("dlAdd").onclick = async () => {
   try {
     const r = await api("/api/download/add", {
       urls, dest,
-      after: { convert: $("dlConvert").checked, quality: parseInt($("qn").value, 10), method: +$("method").value, delete_original: $("del").checked },
+      after: downloadAfter(),
       auth: { mode, key: $("apiKey").value, name: $("authName").value.trim() },
     });
-    store.set("dest", dest);
-    savePref({ download_dir: dest });
+    if (!activePreset) {  // a preset's folder is for this download, not the new default
+      store.set("dest", dest);
+      savePref({ download_dir: dest });
+    }
     const have = r.in_library || [];
     say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + "." +
       (have.length ? ` Already in the library: ${have.slice(0, 3).map(b => `${b.book} (${b.file})`).join(", ")}${have.length > 3 ? ` and ${have.length - 3} more` : ""}.` : ""));
@@ -896,6 +978,7 @@ function render(st) {
     defaultsSet = true;
     convertNote();
   }
+  renderPresets(accountsOn ? st.harbor?.download_presets || [] : storedPresets());
   renderConvert(st);
   renderDownloads(st);
   historyTick(st);

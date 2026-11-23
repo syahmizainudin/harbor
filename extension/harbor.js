@@ -9,7 +9,7 @@ export const DEFAULT_URL = "http://localhost:8765";
 export const ARCHIVE_RE = /\.(zip|cbz|cbr|rar|7z|cb7|pdf|epub)(?:$|[?#])/i;
 
 export async function settings() {
-  const s = await chrome.storage.local.get({ harborUrl: DEFAULT_URL, dest: "", convert: true, token: "" });
+  const s = await chrome.storage.local.get({ harborUrl: DEFAULT_URL, dest: "", convert: true, token: "", preset: "" });
   s.harborUrl = s.harborUrl.replace(/\/+$/, "") || DEFAULT_URL;
   return s;
 }
@@ -40,27 +40,33 @@ async function call(path, body) {
 
 export const state = () => call("/api/state");
 
-/** Queue URLs in Harbor's download queue, with Harbor's own defaults. Returns {added, duplicates}. */
+/** Queue URLs in Harbor's download queue, with the chosen preset (made in Harbor's Download tab)
+ * or Harbor's own defaults. Returns {added, duplicates}. */
 export async function send(urls) {
   urls = [...new Set(urls.filter(u => /^https?:\/\//i.test(u)))];
   if (!urls.length) throw new Error("No http(s) links to send");
   const [st, s] = await Promise.all([state(), settings()]);
   const h = st.harbor || {};
-  const dest = s.dest || h.download_dir;
+  let p = {};
+  if (s.preset) {
+    p = (h.download_presets || []).find(x => x.name === s.preset);
+    if (!p) throw new Error(`Harbor has no preset “${s.preset}” any more: choose another in the Harbor popup`);
+  }
+  const dest = p.download_dir || s.dest || h.download_dir;
   if (!dest) throw new Error("Choose a save-to folder in the Harbor popup, or set HARBOR_DOWNLOAD_DIR");
-  const mode = h.auth_mode || "none";
+  const mode = p.auth_mode || h.auth_mode || "none";
   if (mode !== "none" && !h.has_key) {
     throw new Error("Harbor has no API key in its .env (HARBOR_API_KEY), or set HARBOR_AUTH_MODE=none");
   }
   return call("/api/download/add", {
     urls,
     dest,
-    auth: { mode, name: h.auth_name || "", key: "" },
+    auth: { mode, name: (p.auth_mode ? p.auth_name : h.auth_name) || "", key: "" },
     after: {
-      convert: s.convert,
-      quality: st.defaults?.quality ?? 80,
-      method: st.defaults?.method ?? 4,
-      delete_original: h.delete_original ?? true,
+      convert: p.convert ?? s.convert,
+      quality: p.quality ?? st.defaults?.quality ?? 80,
+      method: p.method ?? st.defaults?.method ?? 4,
+      delete_original: p.delete_original ?? h.delete_original ?? true,
     },
   });
 }

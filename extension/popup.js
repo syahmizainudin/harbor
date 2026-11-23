@@ -26,6 +26,7 @@ async function showStatus() {
     ].slice(0, 5);
     $("active").innerHTML = rows.map(r => `<li><span>${esc(r.name)}</span><span>${esc(r.info)}</span></li>`).join("");
     $("dest").placeholder = st.harbor?.download_dir ? `Harbor's default: ${st.harbor.download_dir}` : "Required: Harbor has no default folder";
+    showPresets(st.harbor?.download_presets || []);
     $("sendTab").disabled = false;
   } catch (e) {
     $("status").textContent = e.signedOut ? "Not signed in" : "Not running";
@@ -34,6 +35,18 @@ async function showStatus() {
     $("active").innerHTML = `<li><span>${esc(e.message)}</span></li>`;
   }
 }
+
+/* ---------- presets (made in Harbor's Download tab) ---------- */
+async function showPresets(list) {
+  const { preset } = await settings();
+  const missing = preset && !list.some(p => p.name === preset);
+  $("preset").innerHTML = `<option value="">Harbor's defaults</option>` +
+    list.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("") +
+    (missing ? `<option value="${esc(preset)}">${esc(preset)} (gone)</option>` : "");
+  $("preset").value = preset;
+  $("presetRow").hidden = !list.length && !missing;
+}
+$("preset").onchange = () => chrome.storage.local.set({ preset: $("preset").value });
 
 /* ---------- links on the page ---------- */
 async function loadLinks() {

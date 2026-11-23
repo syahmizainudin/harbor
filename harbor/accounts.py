@@ -128,15 +128,48 @@ def _int_in(lo: int, hi: int):
     return lambda v: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
 
 
+AUTH_MODES = ("none", "bearer", "header", "query")
+PRESETS_MAX = 20
+# One download preset's fields: name -> check. Never the API key.
+PRESET_FIELDS = {
+    "name": lambda v: _text(60)(v) and bool(v.strip()),
+    "download_dir": _text(4096),
+    "auth_mode": lambda v: v in AUTH_MODES,
+    "auth_name": _text(200),
+    "convert": lambda v: isinstance(v, bool),
+    "quality": _int_in(1, 100),
+    "method": _int_in(0, 6),
+    "delete_original": lambda v: isinstance(v, bool),
+}
+
+
+def _presets(v) -> bool:
+    """Download presets: a list of named sets of download settings, names unique (any case)."""
+    if not isinstance(v, list) or len(v) > PRESETS_MAX:
+        return False
+    names = set()
+    for p in v:
+        if not isinstance(p, dict) or "name" not in p or set(p) - set(PRESET_FIELDS):
+            return False
+        if not all(PRESET_FIELDS[k](x) for k, x in p.items()):
+            return False
+        key = p["name"].strip().lower()
+        if key in names:
+            return False
+        names.add(key)
+    return True
+
+
 # A user's own defaults for the Convert and Download tabs: name -> check. Never the API key.
 PREFS = {
     "quality": _int_in(1, 100),
     "method": _int_in(0, 6),
     "delete_original": lambda v: isinstance(v, bool),
     "download_dir": _text(4096),
-    "auth_mode": lambda v: v in ("none", "bearer", "header", "query"),
+    "auth_mode": lambda v: v in AUTH_MODES,
     "auth_name": _text(200),
     "convert_downloads": lambda v: isinstance(v, bool),
+    "download_presets": _presets,
 }
 
 

@@ -4,6 +4,9 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- **Download presets:** on the Download tab, **Save as preset…** keeps the folder, API key mode and name, and convert settings (convert, quality, effort, delete) under a name; the **Preset** menu fills them in. Picking one doesn't change your defaults. Never stores the API key. Per account (up to 20), saved with `POST /api/account/prefs` (`download_presets`) and shown in `/api/state` as `harbor.download_presets`; without accounts, the browser keeps them.
+- **Chrome extension 0.3.0:** a **Preset** menu in the popup; the chosen preset's folder and convert settings are used for sends from the popup and the right-click menu. Reload the extension from `chrome://extensions`.
+
 - **Compilation folders** in the Library tab (cbz-shelf 0.6.0): a folder of unrelated books no longer has to be one series. On its series page, **Folder is a compilation** (library managers) groups its books by the series name in each file name; **Folder is one series** undoes it. The change is recorded in the audit log ("library folder grouping changed").
 
 ## 0.2.2

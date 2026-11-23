@@ -10,16 +10,12 @@ A browsable library of RPG Maker games, played in the browser, with saves kept o
 - **Settled:** a new public tool, `rpgm-shelf`, mounted by harbor as a Games tab. Games run on a separate games server (a second port), never on harbor's origin, because a game is untrusted JavaScript. A sandboxed iframe doesn't work: MV reads pixels back from its images and fails with a tainted-canvas error. A small script added to each game's page sends the engine's saves to the server, authorised by a play token tied to one user and one game.
 - **Open:** MZ support waits for a real MZ game to test with (MZ saves through IndexedDB, so it needs its own save script). Tailscale access later needs the games port served through `tailscale serve` as well.
 
-## Multiple profiles for the download queue
+## More download queue profiles
 
-Named sets of download settings to choose from when adding a download.
+Download **presets** (named sets of folder, API key mode and convert settings, per account, in the page and the Chrome extension) are done; see `CHANGELOG.md`. Two other readings of "profiles" are still open:
 
-- **Open: what a profile holds.** Possible readings:
-  1. **Destination and options presets:** folder, convert after download (quality, delete original), sign-in mode and name. Picking "Manga" fills them in at once. The page and the Chrome extension would offer the list.
-  2. **Separate queues:** each profile is its own queue with its own workers, speed limit and quiet hours, so one site's slow downloads don't hold up another.
-  3. **Site credentials:** saved sign-in details per site, picked automatically by URL.
-- **Notes:** 1 is mostly harbor-side (stored like per-user defaults, `accounts.PREFS`, or shared). 2 changes dl-queue (`DownloadQueue` is one queue with one rate and hours today) and belongs there first. 3 touches secrets: anything stored must follow the API key rules (never in `/api/state`, never logged), so it needs its own design.
-- **Open: per user or shared?** Per-user profiles fit the existing per-user defaults. Shared profiles would need an admin permission to edit.
+- **Separate queues:** each profile its own queue with its own workers, speed limit and quiet hours, so one site's slow downloads don't hold up another. `DownloadQueue` is one queue with one rate and hours today, so this changes dl-queue first.
+- **Site credentials:** saved sign-in details per site, picked by URL. These are secrets: anything stored must follow the API key rules (never in `/api/state`, never logged, never in a preset), so it needs its own design.
 
 ## Harbor as a skeleton with extensions
 

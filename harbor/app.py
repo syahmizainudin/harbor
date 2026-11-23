@@ -186,7 +186,15 @@ class EnvKeyDownloadAPI(DownloadAPI):
 
 
 # Settings a user's own defaults replace in the "harbor" state (quality and method go in "defaults").
-USER_PAGE_PREFS = ("download_dir", "auth_mode", "auth_name", "delete_original", "method", "convert_downloads")
+USER_PAGE_PREFS = (
+    "download_dir",
+    "auth_mode",
+    "auth_name",
+    "delete_original",
+    "method",
+    "convert_downloads",
+    "download_presets",
+)
 
 
 class HarborAPI:
@@ -208,6 +216,7 @@ class HarborAPI:
         defaults = {
             **self.settings.page_defaults(),
             "convert_downloads": True,
+            "download_presets": [],  # a user's own; none without accounts (the page keeps them)
             "watching": len(watch_list(self.settings)),
         }
         if user:  # the signed-in user's own defaults win over the .env ones

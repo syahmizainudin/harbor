@@ -42,6 +42,7 @@
   .muted { color: var(--muted); font-size: 12px; }
   .msg { min-height: 1.3em; font-size: 12px; margin-top: 6px; }
   .msg.err { color: var(--bad); } .msg.ok { color: var(--ok); }
+  select { padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; }
   input[type=text] { width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: 12px ui-monospace, Consolas, monospace; }
   details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
   details label { display: block; margin-top: 8px; font-size: 12px; }
@@ -58,6 +59,9 @@
 <section>
   <div class="chips" id="chips"></div>
   <ul class="active" id="active"></ul>
+  <label class="row" id="presetRow" hidden>Preset
+    <select id="preset" class="grow" title="Folder, API key mode and convert settings, from Harbor's Download tab"></select>
+  </label>
   <div class="row">
     <button class="primary grow" id="sendTab">Send this tab</button>
     <button id="openHarbor">Open Harbor</button>
@@ -84,7 +88,7 @@
     <label>Token <input type="password" id="token" placeholder="hbt_… from Harbor → Account" autocomplete="off"></label>
     <label>Save to folder <input type="text" id="dest" placeholder="Harbor's default"></label>
     <label class="row" style="margin-top:8px"><input type="checkbox" id="convert"> Convert .zip / .cbz downloads to WebP .cbz</label>
-    <div class="muted" style="margin-top:6px">The API key, quality and delete settings come from Harbor (its .env and Convert tab defaults).</div>
+    <div class="muted" style="margin-top:6px">The API key, quality and delete settings come from Harbor (its .env and Convert tab defaults). A preset, made in Harbor's Download tab, replaces the folder, convert, quality and delete settings.</div>
   </details>
 </section>
 

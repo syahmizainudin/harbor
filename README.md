@@ -256,6 +256,8 @@ The tabs are in a sidebar on the left; **« Collapse** shrinks it to icons. Whil
 2. Choose how the API key is sent: Bearer, a named header, a named query parameter, or none.
 3. Leave **Convert .zip / .cbz downloads** ticked to send each downloaded archive to the Convert queue, with the Convert tab's quality and delete settings. Each download then shows its convert job's progress. A file that isn't converted (an `.epub`, or with this unticked) that lands in a library folder joins the library right away.
 
+**Presets:** **Save as preset…** keeps the folder, the API key mode and name, and the convert settings (convert or not, quality, effort, delete) under a name, such as *Manga* or *Books*. Picking a preset from the **Preset** menu fills in the form for the next downloads; your defaults don't change, and the folder you used isn't remembered as the new default. The API key is never saved in a preset. With accounts, presets belong to your account (up to 20) and the Chrome extension can use them. Without accounts, this browser keeps them.
+
 `{1..20}` in a URL stands for 20 URLs, one per number, and `{01..20}` keeps the zero padding. One range per URL, at most 500 URLs per add. This works from the Chrome extension too.
 
 With `HARBOR_DOWNLOAD_RATE`, all downloads together stay under that speed. With `HARBOR_DOWNLOAD_HOURS`, new downloads start only in those hours, and the tab shows "waiting until …" outside them. A download that is already running finishes.
@@ -286,7 +288,7 @@ The `extension/` folder is a Chrome extension that sends links to harbor:
   - lists the links on the page (archives by default, or all links), so you can tick some and send them together.
 - **The toolbar badge** counts active jobs, and reads `off` when harbor isn't running.
 
-Downloads sent this way use harbor's defaults: the `.env` key, folder and auth settings, and the Convert quality, effort and delete settings. The popup's Settings can change the harbor address, the save-to folder and whether archives are converted.
+Downloads sent this way use harbor's defaults: the `.env` key, folder and auth settings, and the Convert quality, effort and delete settings. The popup's Settings can change the harbor address, the save-to folder and whether archives are converted. If you have presets (made in the Download tab), the popup shows a **Preset** menu: the chosen preset's folder and convert settings are used for the popup's sends and the right-click menu. If the chosen preset is deleted in harbor, sending stops with a message until you pick another.
 
 **Install (Chrome on Windows):**
 

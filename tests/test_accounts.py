@@ -397,6 +397,54 @@ class SignInHttpTests(SignInBase):
         self.req("POST", "/api/account/prefs", {"changes": {"quality": None}}, cookie=ann)
         self.assertEqual(self.req("GET", "/api/state", cookie=ann)[2]["defaults"]["quality"], 80)
 
+    def test_download_presets(self):
+        ann, bo = self.login("Ann"), self.login("Bo")
+        manga = {
+            "name": "Manga",
+            "download_dir": "/mnt/d/Manga",
+            "auth_mode": "none",
+            "auth_name": "",
+            "convert": True,
+            "quality": 70,
+            "method": 4,
+            "delete_original": True,
+        }
+        books = {"name": "Books", "download_dir": "/mnt/d/Books", "convert": False}
+        changes = {"changes": {"download_presets": [manga, books]}}
+        self.assertEqual(self.req("POST", "/api/account/prefs", changes, cookie=ann)[0], 200)
+        st = self.req("GET", "/api/state", cookie=ann)[2]
+        self.assertEqual(st["harbor"]["download_presets"], [manga, books])
+        self.assertEqual(st["harbor"]["download_dir"], "")  # a preset doesn't change the defaults
+        self.assertEqual(self.req("GET", "/api/state", cookie=bo)[2]["harbor"]["download_presets"], [])
+        self.assertNotIn("download_presets", self.req("GET", "/api/state")[2]["harbor"])  # guests
+        # the Chrome extension reads them with its token
+        token = self.req("POST", "/api/account/token-create", {"label": "x"}, cookie=ann)[2]["token"]
+        ext = {"X-Harbor-Token": token, "Origin": EXTENSION_ORIGIN}
+        self.assertEqual(
+            self.req("GET", "/api/state", headers=ext)[2]["harbor"]["download_presets"], [manga, books]
+        )
+        for bad in (
+            [{**manga, "key": "secret"}],  # never the API key
+            [{**manga, "api_key": "secret"}],
+            [{"download_dir": "/x"}],  # no name
+            [{"name": "  "}],
+            [manga, {"name": "MANGA"}],  # names are unique in any case
+            [{**manga, "quality": 0}],
+            [{**manga, "quality": True}],
+            [{**manga, "auth_mode": "magic"}],
+            [{**manga, "download_dir": "a\nb"}],
+            [{"name": f"p{i}"} for i in range(A.PRESETS_MAX + 1)],
+            {"name": "Manga"},
+        ):
+            with self.subTest(bad=bad):
+                body = {"changes": {"download_presets": bad}}
+                self.assertEqual(self.req("POST", "/api/account/prefs", body, cookie=ann)[0], 400)
+        self.assertEqual(
+            self.req("GET", "/api/state", cookie=ann)[2]["harbor"]["download_presets"], [manga, books]
+        )
+        self.req("POST", "/api/account/prefs", {"changes": {"download_presets": None}}, cookie=ann)
+        self.assertEqual(self.req("GET", "/api/state", cookie=ann)[2]["harbor"]["download_presets"], [])
+
     def test_no_accounts_yet(self):
         empty = A.Accounts(self.dir / "empty.db")
         self.addCleanup(empty.close)
