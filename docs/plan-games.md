@@ -50,7 +50,7 @@ Saves are stored in the tool's database (or files under its data folder), never 
 
 ### Phase 0: prototype (done 2026-11-23, MV only)
 
-No real game was available, so the prototype used a generated MV game: the MIT-licensed official corescript (`rpgtkoolmv/corescript`), generated `data/*.json`, generated PNGs and DejaVu Sans Mono standing in for the game font. That builder becomes the new repo's test fixture (commercial game assets can't go in a public repo). Headless Chromium with SwiftShader, WebGL confirmed on (`Graphics.isWebGL()`).
+No real game was available, so the prototype used a generated MV game: the MIT-licensed official corescript (`rpgtkoolmv/corescript`), generated `data/*.json`, generated PNGs and DejaVu Sans Mono standing in for the game font. That builder becomes the new repo's test fixture (commercial game assets can't go in a public repo). The scripts, with how to rerun them, are in [plan-games/prototype](plan-games/prototype/README.md). Headless Chromium with SwiftShader, WebGL confirmed on (`Graphics.isWebGL()`).
 
 - **Option B fails.** In `<iframe sandbox="allow-scripts">`, the title screen throws `SecurityError: The canvas has been tainted by cross-origin data` from `Bitmap.getPixel` (the window skin's text colours). MV reads pixels back from images it loads without `crossOrigin`, so an opaque origin can't run it. Not fixable without patching the engine.
 - **Option A works end to end:** title, New Game, walking, menu, save to the server, reload, Continue enabled from the server's saves, load, player back where they saved. Map tiles and sprites draw through WebGL.
