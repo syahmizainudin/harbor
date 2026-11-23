@@ -73,6 +73,15 @@ class BackupTests(Base):
         self.addCleanup(acc.close)
         self.assertEqual(acc.login("Ann", PW)[0]["name"], "Ann")
 
+    def test_secret_key_only_with_secrets(self):
+        self.make_files()
+        (self.dir / "secret.key").write_bytes(b"k" * 44)
+        folder, _ = maint.backup(self.settings, self.dir / "b1")
+        self.assertFalse((folder / "secret.key").exists())
+        folder, done = maint.backup(self.settings, self.dir / "b2", with_secrets=True)
+        self.assertEqual(oct((folder / "secret.key").stat().st_mode & 0o777), "0o600")
+        self.assertTrue(any(x.startswith("site key secret:") for x in done))
+
     def test_backup_with_nothing_yet(self):
         folder, done = maint.backup(self.settings, self.dir / "b")
         self.assertEqual((done, folder.is_dir()), ([], True))
@@ -119,6 +128,16 @@ class DoctorTests(Base):
         self.assertIn("is upgraded at the next start (schema 4", text)
         self.assertIn("FAIL cbz-webp", text)
         self.assertIn("harbor pins 9.9.9", text)
+
+    def test_secret_key_mode(self):
+        self.make_files()
+        key = self.dir / "secret.key"
+        key.write_bytes(b"k" * 44)
+        key.chmod(0o644)
+        report = maint.doctor(self.settings)
+        self.assertIn(("warn", f"{key} can be read by other users (mode 644): chmod 600 {key}"), report)
+        key.chmod(0o600)
+        self.assertIn(("ok", f"site key secret {key}"), maint.doctor(self.settings))
 
     def test_no_admin_and_accounts_off(self):
         text = "\n".join(m for _, m in maint.doctor(self.settings))

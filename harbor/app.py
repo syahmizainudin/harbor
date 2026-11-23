@@ -209,11 +209,9 @@ class EnvKeyDownloadAPI(DownloadAPI):
         if not me or not isinstance(urls, list):
             return {}
         if any(self.site_keys.matches_insecure(me["id"], str(u)) for u in urls):
-            return {
-                "key_note": (
-                    "a saved site key matches, but it's only sent over https: these download without it"
-                )
-            }
+            instead = "with the .env key instead" if self._api_key else "without it"
+            note = f"a saved site key matches, but it's only sent over https: these download {instead}"
+            return {"key_note": note}
         return {}
 
 
