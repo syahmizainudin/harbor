@@ -31,7 +31,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `docs/planned-features.md` | Points to the planned-features list, a Claude Doc (https://claude.ai/artifact/GK7bah81qG4Ae8yDAzXV6x) edited without commits; read it through the Claude Docs tools. Detailed plans stay in `docs/plan-*.md` |
 | `docs/design.md` | How harbor looks (colours, layout, the shared pieces, words) and how a request flows; follow it for new features |
 | `docs/plan-site-credentials.md` | The design for saved sign-in details per site (agreed, not built) |
-| `docs/plan-games.md` | The plan for the RPG Maker MV/MZ library and player (`rpgm-shelf`), with the phase 0 prototype results |
+| `docs/plan-games.md` | The plan for the RPG Maker MV/MZ library and player (`rpgm-shelf`, a separate public tool; phase 1 built there), phase by phase |
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
 | `ecosystem.config.cjs` | pm2 config that keeps harbor running |

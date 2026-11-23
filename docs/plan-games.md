@@ -1,6 +1,6 @@
 # Plan: an RPG Maker MV/MZ library and player
 
-Status: phase 0 done 2026-11-23: **option A (a separate games server) chosen**, option B fails. Decisions below. Nothing built in any repo yet.
+Status: phase 1 built 2026-11-23 in the new `rpgm-shelf` repo (0.1.0, not published yet). Phase 2 (harbor's Games tab) is next. Option A (a separate games server) was chosen in phase 0.
 
 ## What was asked
 
@@ -50,7 +50,7 @@ Saves are stored in the tool's database (or files under its data folder), never 
 
 ### Phase 0: prototype (done 2026-11-23, MV only)
 
-No real game was available, so the prototype used a generated MV game: the MIT-licensed official corescript (`rpgtkoolmv/corescript`), generated `data/*.json`, generated PNGs and DejaVu Sans Mono standing in for the game font. That builder becomes the new repo's test fixture (commercial game assets can't go in a public repo). The scripts, with how to rerun them, are in [plan-games/prototype](plan-games/prototype/README.md). Headless Chromium with SwiftShader, WebGL confirmed on (`Graphics.isWebGL()`).
+No real game was available, so the prototype used a generated MV game: the MIT-licensed official corescript (`rpgtkoolmv/corescript`), generated `data/*.json`, generated PNGs and DejaVu Sans Mono standing in for the game font. That builder becomes the new repo's test fixture (commercial game assets can't go in a public repo). The builder and the browser driver now live in `rpgm-shelf`'s `tests/e2e/` (the prototype folder was removed). Headless Chromium with SwiftShader, WebGL confirmed on (`Graphics.isWebGL()`).
 
 - **Option B fails.** In `<iframe sandbox="allow-scripts">`, the title screen throws `SecurityError: The canvas has been tainted by cross-origin data` from `Bitmap.getPixel` (the window skin's text colours). MV reads pixels back from images it loads without `crossOrigin`, so an opaque origin can't run it. Not fixable without patching the engine.
 - **Option A works end to end:** title, New Game, walking, menu, save to the server, reload, Continue enabled from the server's saves, load, player back where they saved. Map tiles and sprites draw through WebGL.
@@ -65,6 +65,14 @@ No real game was available, so the prototype used a generated MV game: the MIT-l
 - Cover: the title screen image (`img/titles1/<System.json title1Name>`), decrypted if needed. MV/MZ encrypt images with the key in `System.json`; the engine decrypts in the browser, so serving stays read-only.
 - Grid, search, game page, Play button, server saves per user.
 - Games that call NW.js-only features (`require(`, `nw.gui`, `process.`) are flagged "may not run in a browser" on their card. No shims in phase 1.
+
+**Built 2026-11-23** (`rpgm-shelf` 0.1.0), checked with the real MV engine through `tests/e2e`:
+
+- `Library` (folders, games, saves per user and game), `GameServer` (play tokens, read-only files, save endpoints), `shim_mv.js`, `GamesAPI(user_of=, can=)` with `games.play` and `games.manage`, the page and the `rpgm-shelf` command.
+- Saves go with a plain `fetch` (a `keepalive` body is limited to 64 KiB), and a failed save shows a note in the game.
+- **The CSP needs `'unsafe-eval'`**: without it PIXI gets no WebGL renderer. Other origins stay blocked.
+- The page opens games under the other loopback name, so the two origins don't share cookies on this computer. With one shared host name (Tailscale) they do, and the games server's rule of never reading cookies is what protects harbor.
+- `GameServer(frame_ancestors=)` is ready for phase 2, where harbor frames the player.
 
 ### Phase 2: harbor tab
 
