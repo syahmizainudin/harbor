@@ -28,6 +28,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/admin.py` | `AdminAPI` at `/api/admin/`: users and roles, with the no-escalation rule |
 | `docs/plan-users.md` | The plan for accounts, permissions and per-user settings, phase by phase |
 | `docs/planned-features.md` | Points to the planned-features list, a Claude Doc (https://claude.ai/artifact/GK7bah81qG4Ae8yDAzXV6x) edited without commits; read it through the Claude Docs tools. Detailed plans stay in `docs/plan-*.md` |
+| `docs/plan-site-credentials.md` | The design for saved sign-in details per site (not built; questions open) |
 | `docs/plan-games.md` | The plan for the RPG Maker MV/MZ library and player (`rpgm-shelf`), with the phase 0 prototype results |
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
