@@ -1,6 +1,6 @@
 # Plan: download lanes
 
-Status: built 2026-11-23 (dl-queue 0.6.0 and harbor), waiting for release.
+Status: released 2026-11-23 in dl-queue 0.6.0 and harbor 0.2.4.
 
 ## What was asked
 
