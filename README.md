@@ -243,6 +243,8 @@ The file is plain `KEY=value` lines. `#` starts a comment, values may be quoted,
 - The key is never shown, never added to the queue state, and never stored in the browser.
 - `.env` files are git-ignored here. Keep it that way, and keep the file private (`chmod 600 .env`).
 
+With accounts, each user's own defaults win over these values. Without accounts, values in the file fill the Download tab's fields only when this browser hasn't remembered its own value. To go back to the file's values, clear the site's data in the browser.
+
 ### Changing settings on the Admin page
 
 With accounts, someone with the `settings.manage` permission (Admin has it) can change about twenty settings on the Admin page's **Settings** tab: the Convert and Download defaults, downloads and conversions at once, retries, the speed limit and hours, taking turns between sites, watch folders, and how long sign-ins, history and the audit log last.
@@ -250,9 +252,8 @@ With accounts, someone with the `settings.manage` permission (Admin has it) can 
 - **`.env` wins.** A setting given in `.env`, the environment or a flag is shown locked, with where it's set. To manage it on the page, remove it from `.env` and restart.
 - **Most apply at once.** Conversions and downloads at once, image threads, watch folders and the start-up library scan are saved and used after a restart; the page says when a restart is needed.
 - **Some stay in `.env` only:** the port and address, HTTPS and proxy settings, accounts and cookie settings, database and state file paths, the extension origins, the API key, and `HARBOR_WATCH_DELETE_ORIGINAL` (shown, not changeable), because it deletes files with nobody reviewing them.
+- Watch folders keep converting with the quality and effort harbor started with until it restarts.
 - Every change goes in the audit log. Values are stored in the accounts database; at start-up harbor prints which ones it used.
-
-With accounts, each user's own defaults win over these values. Without accounts, values in the file fill the Download tab's fields only when this browser hasn't remembered its own value. To go back to the file's values, clear the site's data in the browser.
 
 ## The page
 

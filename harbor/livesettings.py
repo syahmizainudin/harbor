@@ -9,7 +9,8 @@ here; otherwise a value saved here replaces the default. Values are stored as th
 would hold and checked with the same ``config.VARS`` validators.
 
 ``now`` settings change the running harbor at once; ``restart`` ones are saved and used from the
-next start (the queues fix their workers when they start).
+next start (the queues fix their workers when they start). The watch folders' ``Watcher`` is built
+at start-up too, so it keeps the quality and effort harbor started with until a restart.
 """
 
 from __future__ import annotations
