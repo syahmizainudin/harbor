@@ -194,13 +194,14 @@ class GuardedQueueAPI:
         if user is not None and SEE_ALL not in user.get("perms", ()):
             owners = self.owners.snapshot(self.kind)
             st[self.list_key] = [j for j in st[self.list_key] if owners.get(j["id"]) == user["id"]]
-        if user is not None and st.get("download_lanes") and self.accounts is not None:
+        if user is not None and st.get("download_lanes") and LANES not in user.get("perms", ()):
             hidden = self._lanes_hidden(user)
             st["download_lanes"] = [x for x in st["download_lanes"] if x["name"] not in hidden]
         return st
 
     def _lanes_hidden(self, user) -> set[str]:
-        """The lanes ``user`` may not put downloads in (their role isn't on the lane's list)."""
+        """The lanes ``user`` may not put downloads in (their role isn't on the lane's list). Lane
+        managers see every lane, so they can pause it, but adding still follows the lists."""
         if self.accounts is None or user.get("admin"):
             return set()
         return {x["name"] for x in self.accounts.lanes() if not self.accounts.lane_allowed(x, user)}

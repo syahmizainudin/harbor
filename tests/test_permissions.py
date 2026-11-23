@@ -310,6 +310,15 @@ class DownloadLaneTests(HttpBase):
             self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-set", bad)[0], 400, bad)
         self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-set", {**body, "roles": [999]})[0], 404)
 
+    def test_lane_managers_see_every_lane(self):
+        role = self.acc.add_role("Lane keepers", ["download", "download.lanes"])
+        self.acc.add("Kit", PW, role=role["id"])
+        self.req("Ann", "POST", "/api/admin/lane-set", {"name": "vip", "workers": 1, "roles": []})
+        kit = self.req("Kit", "GET", "/api/state")[1]
+        self.assertEqual([x["name"] for x in kit["download_lanes"]], ["vip"])  # to pause it
+        self.assertEqual(self.req("Kit", "POST", "/api/download/add", self.lane_add("vip"))[0], 403)
+        self.assertEqual(self.req("Kit", "POST", "/api/download/lane-pause", {"name": "vip"})[0], 200)
+
     def test_removed_role_leaves_lane_lists(self):
         role = self.acc.add_role("Helpers", ["download"])
         self.acc.set_lane("vip", 1, "", "", [role["id"]])
