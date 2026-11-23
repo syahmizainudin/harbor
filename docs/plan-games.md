@@ -1,6 +1,6 @@
 # Plan: an RPG Maker MV/MZ library and player
 
-Status: phase 1 released 2026-11-23 (`rpgm-shelf` 0.1.0, public). Phase 2 (harbor's Games tab) built 2026-11-23, waiting for release with rpgm-shelf 0.1.1. Option A (a separate games server) was chosen in phase 0.
+Status: phase 1 released 2026-11-23 (`rpgm-shelf` 0.1.0, public). Phase 2 (harbor's Games tab) released 2026-11-23 in harbor 0.2.9 with rpgm-shelf 0.1.1. Option A (a separate games server) was chosen in phase 0.
 
 ## What was asked
 

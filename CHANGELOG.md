@@ -2,7 +2,9 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
-## Unreleased
+## 0.2.9
+
+Pins cbz-webp 0.5.1, dl-queue 0.6.2, cbz-shelf 0.6.0 and rpgm-shelf 0.1.1 (new).
 
 - **Games tab** ([rpgm-shelf](https://github.com/syahmizainudin/rpgm-shelf) 0.1.1): RPG Maker MV games in the browser, saves kept per account. Games run on their own port on 127.0.0.1 (`HARBOR_GAMES_PORT`, default 8768), never on harbor's. New permissions `games.play` (given to Member by migration 11) and `games.manage`; game folder changes are in the audit log. Settings `HARBOR_GAMES`, `HARBOR_GAMES_PORT`, `HARBOR_GAMES_DB`, `HARBOR_GAMES_SCAN`. `harbor doctor` and `harbor backup` cover `games.db`.
 - **Sign-in:** when a request carries several `harbor_session` cookies (another page on the same host can set one), harbor tries each, so a planted cookie can't hide your session.
