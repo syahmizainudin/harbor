@@ -461,6 +461,10 @@ class SessionsAndAuditTests(SignInBase):
         self.assertEqual(
             self.req("POST", "/api/library/add-root", {"path": str(self.dir / "More")}, cookie=sid)[0], 200
         )
+        series = self.lib.series_list()["items"][0]["id"]
+        self.assertEqual(
+            self.req("POST", "/api/library/set-compilation", {"id": series, "on": True}, cookie=sid)[0], 200
+        )
         status, _, log = self.req("GET", "/api/admin/audit", cookie=sid)
         self.assertEqual(status, 200)
         got = [(x["actor"], x["action"], x["target"]) for x in reversed(log["items"])]
@@ -475,6 +479,7 @@ class SessionsAndAuditTests(SignInBase):
                 ("Ann", "password changed", "Ann"),
                 ("Ann", "library added", "Manga"),
                 ("Ann", "library folder added", str(self.dir / "More")),
+                ("Ann", "library folder grouping changed", str(self.dir / "Comics" / "S")),
             ],
         )
         everything = json.dumps(log)

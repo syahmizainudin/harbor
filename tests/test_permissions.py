@@ -99,6 +99,8 @@ class PermissionHttpTests(HttpBase):
             200,
         )
         self.assertEqual(self.req("Rea", "POST", "/api/library/scan", {})[0], 403)
+        compilation = {"id": sid, "on": True}
+        self.assertEqual(self.req("Rea", "POST", "/api/library/set-compilation", compilation)[0], 403)
         st = self.req("Rea", "GET", "/api/state")[1]
         self.assertEqual(st["library_can"], {"edit": False, "manage": False})
         self.assertNotIn("admin_users", st)

@@ -280,6 +280,7 @@ class AuditedLibraryAPI:
         "add-library": "library added",
         "rename-library": "library renamed",
         "remove-library": "library removed",
+        "set-compilation": "library folder grouping changed",
     }
 
     def __init__(self, inner, accounts, library: Library):
@@ -311,6 +312,9 @@ class AuditedLibraryAPI:
                     roots.get(_int_or(body.get("root_id")), "all folders"),
                     f"{result.get('removed')} book(s)",
                 )
+            elif action == "set-compilation":
+                target = result.get("folder", "")
+                detail = "compilation" if result.get("compilation") else "one series"
             elif action == "add-library":
                 target, detail = result.get("name", ""), ""
             elif action == "rename-library":

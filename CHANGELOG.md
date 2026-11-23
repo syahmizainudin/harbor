@@ -4,6 +4,8 @@ Each release has a `## <version>` section. The release pipeline publishes that s
 
 ## Unreleased
 
+- **Compilation folders** in the Library tab (cbz-shelf 0.6.0): a folder of unrelated books no longer has to be one series. On its series page, **Folder is a compilation** (library managers) groups its books by the series name in each file name; **Folder is one series** undoes it. The change is recorded in the audit log ("library folder grouping changed").
+
 ## 0.2.2
 
 Pins cbz-webp 0.5.1, dl-queue 0.5.1 and cbz-shelf 0.5.3 (unchanged).
