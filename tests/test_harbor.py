@@ -180,6 +180,7 @@ class ConsoleTests(Base):
                 "downloads_paused",
                 "download_workers",
                 "download_rate",
+                "download_fair",
                 "download_hours",
                 "download_waiting",
                 "download_lanes",

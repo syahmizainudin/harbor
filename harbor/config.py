@@ -106,6 +106,7 @@ class Settings:
     local_port: int = 0  # with harbor's own HTTPS: a plain-HTTP port on 127.0.0.1 for the extension
     download_rate: int = 0  # bytes a second for all downloads together; 0 = no limit
     download_hours: str = ""  # "01:00-07:00": new downloads start only then
+    download_fair: bool = False  # take turns between sites instead of first queued, first started
     watch_dirs: str = ""  # folders whose new archives are converted on their own, ";"-separated
     watch_delete_original: bool = False  # never follows HARBOR_DELETE_ORIGINAL: nobody reviews these
     watch_poll: int = 30  # seconds between checks of the watch folders
@@ -246,6 +247,7 @@ VARS = {
     "local_port": ("HARBOR_LOCAL_PORT", _int(0, 65535)),
     "download_rate": ("HARBOR_DOWNLOAD_RATE", _rate),
     "download_hours": ("HARBOR_DOWNLOAD_HOURS", _hours),
+    "download_fair": ("HARBOR_DOWNLOAD_FAIR", _bool),
     "watch_dirs": ("HARBOR_WATCH_DIRS", _text),
     "watch_delete_original": ("HARBOR_WATCH_DELETE_ORIGINAL", _bool),
     "watch_poll": ("HARBOR_WATCH_POLL", _int(5, 3600)),

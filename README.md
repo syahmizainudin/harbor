@@ -57,7 +57,7 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
   | `library.edit` | Edit book and series details, which everyone sees |
   | `library.manage` | Add and remove library folders, rescan, forget missing books |
   | `jobs.see_all` | See and manage everyone's jobs, and pause, cancel all or clear finished. Without it you see only your own |
-  | `download.lanes` | The Admin tab's Download lanes section: add, change and remove lanes |
+  | `download.lanes` | The Admin tab's Download lanes section: add, change and remove lanes, choose who can use each, and pause or resume one lane |
   | `users.manage` | The Admin tab's Users section |
   | `roles.manage` | The Admin tab's roles and permissions matrix |
 
@@ -264,7 +264,9 @@ The tabs are in a sidebar on the left; **« Collapse** shrinks it to icons. Whil
 
 With `HARBOR_DOWNLOAD_RATE`, all downloads together stay under that speed. With `HARBOR_DOWNLOAD_HOURS`, new downloads start only in those hours, and the tab shows "waiting until …" outside them. A download that is already running finishes.
 
-**Download lanes** (with accounts): on the Admin page's **Download lanes** tab, someone with `download.lanes` adds lanes such as *manga* or *night*, each with how many downloads run at once, an optional speed limit and optional hours. A lane's limit caps that lane, and the overall limit above still covers all downloads; a lane without hours follows `HARBOR_DOWNLOAD_HOURS`. The Download tab then has a **Lane** menu (presets remember it, so the Chrome extension uses it too), and the queue shows each lane's running and waiting downloads. Changes apply at once. Removing a lane lets its queued downloads run in the default lane, which keeps `HARBOR_DOWNLOADS`, `HARBOR_DOWNLOAD_HOURS` and the overall limit. Without accounts there are no lanes.
+**Download lanes** (with accounts): on the Admin page's **Download lanes** tab, someone with `download.lanes` adds lanes such as *manga* or *night*, each with how many downloads run at once, an optional speed limit and optional hours. A lane's limit caps that lane, and the overall limit above still covers all downloads; a lane without hours follows `HARBOR_DOWNLOAD_HOURS`. The Download tab then has a **Lane** menu (presets remember it, so the Chrome extension uses it too), and the queue shows each lane's running and waiting downloads. Changes apply at once. A lane can be kept to some roles (**Who can use it**; Admin always can): others don't see it in the Lane menu and can't add to it. Someone with `download.lanes` can **Pause** one lane from its chip on the Download tab or its row on the Admin page; its queued downloads wait, running ones finish, and other lanes carry on. Removing a lane lets its queued downloads run in the default lane, which keeps `HARBOR_DOWNLOADS`, `HARBOR_DOWNLOAD_HOURS` and the overall limit. Without accounts there are no lanes.
+
+**Taking turns between sites:** with `HARBOR_DOWNLOAD_FAIR=true`, the next download to start is the one from the site with the fewest downloads running in its lane, so a long list from one site doesn't hold up a short one from another. Off by default: first queued, first started.
 
 If the library already has a book with the same file name as a URL (ignoring `.zip`, `.cbz` and `.epub`), the message after **Add to queue** names it. The download is queued anyway. Only libraries you can see are checked, and a URL whose file name the server picks later (such as `/download?id=3`) can't be checked.
 

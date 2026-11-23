@@ -23,6 +23,7 @@ from cbzwebp.web import current_user
 
 SEE_ALL = "jobs.see_all"
 QUEUE_WIDE = ("cancel-all", "clear", "pause")
+LANES = "download.lanes"
 DENIED = {"error": "you don't have permission for this"}
 SIGN_IN = {"error": "sign in first"}
 
@@ -171,10 +172,12 @@ class JobOwners:
 class GuardedQueueAPI:
     """Wraps ConvertAPI (``kind="convert"``) or DownloadAPI (``kind="download"``)."""
 
-    def __init__(self, inner, queue, kind: str, owners: JobOwners, guests: bool = False):
-        """``guests``: accounts are on, so no current user means a signed-out visitor."""
+    def __init__(self, inner, queue, kind: str, owners: JobOwners, guests: bool = False, accounts=None):
+        """``guests``: accounts are on, so no current user means a signed-out visitor.
+        ``accounts``: for download lanes limited to some roles."""
         self.inner, self.queue, self.kind, self.owners = inner, queue, kind, owners
         self.guests = guests
+        self.accounts = accounts
         self.list_key = "jobs" if kind == "convert" else "downloads"
 
     def state(self) -> dict:
@@ -191,7 +194,16 @@ class GuardedQueueAPI:
         if user is not None and SEE_ALL not in user.get("perms", ()):
             owners = self.owners.snapshot(self.kind)
             st[self.list_key] = [j for j in st[self.list_key] if owners.get(j["id"]) == user["id"]]
+        if user is not None and st.get("download_lanes") and self.accounts is not None:
+            hidden = self._lanes_hidden(user)
+            st["download_lanes"] = [x for x in st["download_lanes"] if x["name"] not in hidden]
         return st
+
+    def _lanes_hidden(self, user) -> set[str]:
+        """The lanes ``user`` may not put downloads in (their role isn't on the lane's list)."""
+        if self.accounts is None or user.get("admin"):
+            return set()
+        return {x["name"] for x in self.accounts.lanes() if not self.accounts.lane_allowed(x, user)}
 
     def _add_refusal(self, body: dict, perms: set) -> str | None:
         if self.kind not in perms:
@@ -206,6 +218,9 @@ class GuardedQueueAPI:
                     return "you may not convert: untick “Convert .zip / .cbz downloads”"
                 if after.get("delete_original", True) and "delete_original" not in perms:
                     return "you may not delete originals: untick “Delete original .zip” on the Convert tab"
+            lane = body.get("lane")
+            if isinstance(lane, str) and lane.strip() in self._lanes_hidden(current_user()):
+                return f"you can't use the download lane {lane.strip()!r}"
         return None
 
     def post(self, action: str, body: dict):
@@ -229,5 +244,7 @@ class GuardedQueueAPI:
                     return self.inner.post(action, body)
             return self.inner.post(action, body)
         if action in QUEUE_WIDE and SEE_ALL not in perms:
+            return 403, DENIED
+        if action == "lane-pause" and LANES not in perms:
             return 403, DENIED
         return self.inner.post(action, body)

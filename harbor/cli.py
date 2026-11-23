@@ -263,6 +263,7 @@ def cmd_ui(args) -> int:
         on_download_kept=make_library_file_hook(library),
         rate=settings.download_rate,
         hours=settings.download_hours,
+        fair=settings.download_fair,
     )
     store.attach(cq, dq, owners)
 

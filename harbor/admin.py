@@ -11,8 +11,8 @@ last enabled admin stays, are enforced in ``Accounts``.
 Library access (``roles.manage``): who may see each library. A non-admin changes it only for
 libraries they can see, and only for roles within their own permissions.
 
-Download lanes (``download.lanes``): named lanes with their own downloads at once, speed limit and
-quiet hours. A change applies to the running download queue at once.
+Download lanes (``download.lanes``): named lanes with their own downloads at once, speed limit,
+quiet hours and the roles that may use them. A change applies to the running download queue at once.
 """
 
 from __future__ import annotations
@@ -62,6 +62,9 @@ class AdminAPI:
             out["admin_libraries"] = self._libraries(me)
         if LANES in perms:
             out["admin_lanes"] = self.accounts.lanes()
+            out["lane_roles"] = [  # for "who can use it"; Admin always can
+                {"id": r["id"], "name": r["name"]} for r in self.accounts.roles() if r["id"] != ADMIN_ROLE
+            ]
         return out
 
     def _apply_lanes(self) -> None:
@@ -127,10 +130,16 @@ class AdminAPI:
                     body.get("workers", 1),
                     str(body.get("rate") or ""),
                     str(body.get("hours") or ""),
+                    body.get("roles"),
                 )
                 self._apply_lanes()
                 rate = body.get("rate") or "no own limit"
-                detail = f"{lane['workers']} at once, {rate}, {lane['hours'] or 'queue hours'}"
+                names = {r["id"]: r["name"] for r in acc.roles()}
+                who = "every role" if lane["roles"] is None else ", ".join(names[r] for r in lane["roles"])
+                detail = (
+                    f"{lane['workers']} at once, {rate}, {lane['hours'] or 'queue hours'}, "
+                    f"for {who or 'Admin only'}"
+                )
                 acc.audit("download lane saved", lane["name"], detail, actor=me)
                 return 200, {"lanes": acc.lanes()}
             if action == "lane-remove":

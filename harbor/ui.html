@@ -115,6 +115,10 @@
   .bar-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .stats { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+  .chip .link { font-size: 12px; padding: 0 0 0 4px; }
+  .lane-roles { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; flex-basis: 100%; font-size: 13px; }
+  .lane-roles label { display: inline-flex; gap: 5px; align-items: center; font-weight: normal; }
+  .lane-roles input { width: auto; flex: none; min-width: 0; margin: 0; }
   .chip b { color: var(--text); }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   table { width: 100%; border-collapse: collapse; }
@@ -409,9 +413,9 @@
       <div class="msg" id="admAuditMsg"></div>
     </section>
     <section class="panel" id="admLanesBox" hidden>
-      <div class="bar-head"><strong>Download lanes</strong><span class="note">Each lane runs its own downloads at once, with its own speed limit and hours. The overall speed limit still covers every download, and a lane without hours follows the Download hours. Changes apply at once.</span></div>
+      <div class="bar-head"><strong>Download lanes</strong><span class="note">Each lane runs its own downloads at once, with its own speed limit and hours. The overall speed limit still covers every download, and a lane without hours follows the Download hours. A lane can be kept to some roles (Admin can always use it), and paused on its own. Changes apply at once.</span></div>
       <table>
-        <thead><tr><th>Lane</th><th>At once</th><th>Speed limit</th><th>Hours</th><th>Now</th><th></th></tr></thead>
+        <thead><tr><th>Lane</th><th>At once</th><th>Speed limit</th><th>Hours</th><th>Who can use it</th><th>Now</th><th></th></tr></thead>
         <tbody id="admLanes"></tbody>
       </table>
       <form class="adm-form" id="admLaneForm" autocomplete="off">
@@ -420,6 +424,7 @@
         <input type="text" id="alRate" placeholder="Speed limit, e.g. 5M (empty: none)" aria-label="Speed limit">
         <input type="text" id="alHours" placeholder="Hours, e.g. 01:00-07:00 (empty: Download's)" aria-label="Hours">
         <button class="primary">Save lane</button>
+        <div class="lane-roles" id="alRoles" role="group" aria-label="Who can use the lane"></div>
       </form>
       <div class="msg" id="admLanesMsg"></div>
     </section>
@@ -956,8 +961,10 @@ function renderDownloads(st) {
   chips.push(`<span class="chip">${st.download_workers} download(s) at a time${dlPaused ? " · <b>paused</b>" : ""}</span>`);
   if (st.download_rate) chips.push(`<span class="chip">limit <b>${fmt(st.download_rate)}/s</b></span>`);
   if (st.download_hours) chips.push(`<span class="chip" title="New downloads start only in these hours">${st.download_waiting ? `<b>waiting until ${esc(st.download_hours.split("-")[0])}</b>` : `hours ${esc(st.download_hours)}`}</span>`);
+  if (st.download_fair) chips.push(`<span class="chip" title="The next download comes from the site with the fewest running">taking turns between sites</span>`);
+  const lanePause = has("download.lanes");
   for (const l of st.download_lanes || [])
-    chips.push(`<span class="chip" title="Lane: ${l.workers} at once${l.rate ? ", " + fmt(l.rate) + "/s" : ""}${l.hours ? ", hours " + esc(l.hours) : ""}">${esc(l.name)} <b>${l.running}/${l.workers}</b>${l.queued ? ` +${l.queued}` : ""}${l.waiting ? " · waiting" : ""}</span>`);
+    chips.push(`<span class="chip" title="Lane: ${l.workers} at once${l.rate ? ", " + fmt(l.rate) + "/s" : ""}${l.hours ? ", hours " + esc(l.hours) : ""}">${esc(l.name)} <b>${l.running}/${l.workers}</b>${l.queued ? ` +${l.queued}` : ""}${l.paused ? " · <b>paused</b>" : l.waiting ? " · waiting" : ""}${lanePause ? `<button class="link" data-lane-pause="${esc(l.name)}" data-paused="${l.paused ? 1 : 0}">${l.paused ? "Resume" : "Pause"}</button>` : ""}</span>`);
   setHTML($("dlStats"), chips.join(""));
   setText($("badge-download"), (c.queued || 0) + (c.running || 0) || "");
 
@@ -1129,7 +1136,7 @@ function renderAdmin(st) {
   }
   window._admRoles = roles;
   renderAdminLibraries(st.admin_libraries, roles);
-  renderAdminLanes(st.admin_lanes, st.download_lanes || []);
+  renderAdminLanes(st.admin_lanes, st.download_lanes || [], st.lane_roles || []);
 }
 
 /* ---------- admin: download lanes ---------- */
@@ -1139,39 +1146,79 @@ function rateText(n) {
   for (const [u, f] of [["G", 1024 ** 3], ["M", 1024 ** 2], ["K", 1024]]) if (n % f === 0) return n / f + u;
   return String(n);
 }
-let admLanes = "";
-function renderAdminLanes(lanes, live) {
+let admLanes = "", laneRoleKey = "";
+// The form's role picker: "Every role", or the roles ticked (Admin can always use a lane).
+function renderLaneRoles(roles) {
+  const key = JSON.stringify(roles);
+  if (key === laneRoleKey) return;
+  laneRoleKey = key;
+  const picked = laneRolesPicked();
+  setHTML($("alRoles"), `<span class="note">Who can use it:</span><label><input type="checkbox" id="alEvery"${picked === null ? " checked" : ""}> Every role</label>` +
+    roles.map(r => `<label><input type="checkbox" data-lane-role="${r.id}"${picked && picked.includes(r.id) ? " checked" : ""}${picked === null ? " disabled" : ""}> ${esc(r.name)}</label>`).join(""));
+}
+function laneRolesPicked() {
+  if (!$("alEvery") || $("alEvery").checked) return null;
+  return [...document.querySelectorAll("[data-lane-role]:checked")].map(x => +x.dataset.laneRole);
+}
+function setLaneRoles(roles) {
+  if (!$("alEvery")) return;
+  $("alEvery").checked = roles === null;
+  for (const c of document.querySelectorAll("[data-lane-role]")) {
+    c.checked = roles !== null && roles.includes(+c.dataset.laneRole);
+    c.disabled = roles === null;
+  }
+}
+$("alRoles").onchange = e => { if (e.target.id === "alEvery") setLaneRoles(e.target.checked ? null : []); };
+function laneWho(l, roles) {
+  if (l.roles === null) return '<span class="note">every role</span>';
+  const names = Object.fromEntries(roles.map(r => [r.id, r.name]));
+  return l.roles.length ? esc(l.roles.map(id => names[id] || "?").join(", ")) : '<span class="note">Admin only</span>';
+}
+function renderAdminLanes(lanes, live, roles) {
   if (!lanes) return;
-  const key = JSON.stringify([lanes, live]);
+  renderLaneRoles(roles);
+  const key = JSON.stringify([lanes, live, roles]);
   if (key === admLanes || $("admLanes").contains(document.activeElement)) return;
   admLanes = key;
   const now = Object.fromEntries(live.map(x => [x.name, x]));
   setHTML($("admLanes"), lanes.map(l => {
     const n = now[l.name];
-    const state = n ? `${n.running} running, ${n.queued} queued${n.waiting ? " · <b>waiting</b>" : ""}` : "";
+    const state = n ? `${n.running} running, ${n.queued} queued${n.paused ? " · <b>paused</b>" : n.waiting ? " · <b>waiting</b>" : ""}` : "";
+    const pause = n ? `<button class="small" data-lane-pause="${esc(l.name)}" data-paused="${n.paused ? 1 : 0}">${n.paused ? "Resume" : "Pause"}</button> ` : "";
     return `<tr><td>${esc(l.name)}</td><td>${l.workers}</td><td>${l.rate ? fmt(l.rate) + "/s" : '<span class="note">none of its own</span>'}</td>
-      <td>${l.hours ? esc(l.hours) : '<span class="note">as Download</span>'}</td><td class="note">${state}</td>
-      <td class="actions"><button class="small" data-lane-edit="${esc(l.name)}">Edit</button> <button class="small" data-lane-rm="${esc(l.name)}">Remove</button></td></tr>`;
-  }).join("") || `<tr><td colspan="6" class="empty">No lanes yet: every download uses the Download settings.</td></tr>`);
+      <td>${l.hours ? esc(l.hours) : '<span class="note">as Download</span>'}</td><td>${laneWho(l, roles)}</td><td class="note">${state}</td>
+      <td class="actions">${pause}<button class="small" data-lane-edit="${esc(l.name)}">Edit</button> <button class="small" data-lane-rm="${esc(l.name)}">Remove</button></td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="empty">No lanes yet: every download uses the Download settings.</td></tr>`);
   window._admLaneList = lanes;
 }
+// Pause or resume one lane: from its chip on the Download tab or its row here.
+async function toggleLane(b, msgEl) {
+  try {
+    await api("/api/download/lane-pause", { name: b.dataset.lanePause, paused: b.dataset.paused !== "1" });
+    refresh();
+  } catch (err) { say(msgEl, err.message, true); }
+}
+$("dlStats").addEventListener("click", e => { const b = e.target.closest("[data-lane-pause]"); if (b) toggleLane(b, $("dlMsg")); });
 $("admLaneForm").onsubmit = async e => {
   e.preventDefault();
-  const body = { name: $("alName").value.trim(), workers: parseInt($("alWorkers").value, 10), rate: $("alRate").value.trim(), hours: $("alHours").value.trim() };
+  const body = { name: $("alName").value.trim(), workers: parseInt($("alWorkers").value, 10), rate: $("alRate").value.trim(), hours: $("alHours").value.trim(), roles: laneRolesPicked() };
   if (!body.name) return say($("admLanesMsg"), "Give the lane a name.", true);
   try {
     await api("/api/admin/lane-set", body);
     say($("admLanesMsg"), `Saved the lane “${body.name}”. It applies now.`);
     $("admLaneForm").reset();
+    setLaneRoles(null);
     refresh();
   } catch (err) { say($("admLanesMsg"), err.message, true); }
 };
 $("admLanes").onclick = async e => {
-  const ed = e.target.closest("[data-lane-edit]"), rm = e.target.closest("[data-lane-rm]");
+  const ed = e.target.closest("[data-lane-edit]"), rm = e.target.closest("[data-lane-rm]"), pz = e.target.closest("[data-lane-pause]");
+  if (pz) return toggleLane(pz, $("admLanesMsg"));
   if (ed) {
     const l = (window._admLaneList || []).find(x => x.name === ed.dataset.laneEdit);
     if (!l) return;
     $("alName").value = l.name; $("alWorkers").value = l.workers; $("alRate").value = rateText(l.rate); $("alHours").value = l.hours;
+    setLaneRoles(l.roles);
     $("alName").focus();
   }
   if (rm) {

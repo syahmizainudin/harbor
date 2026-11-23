@@ -112,6 +112,7 @@ def build(
     owners=None,
     rate: int = 0,
     hours: str = "",
+    fair: bool = False,
 ) -> tuple[JobQueue, DownloadQueue]:
     """Start both queues, with downloads handing archives to the convert queue.
 
@@ -135,6 +136,7 @@ def build(
         on_change=on_change,
         rate=rate,
         hours=parse_hours(hours) if hours else None,
+        fair=fair,
     ).start()
     return convert_queue, download_queue
 
@@ -393,7 +395,12 @@ def serve_harbor(
             guests,
         ),
         "/api/download/": GuardedQueueAPI(
-            EnvKeyDownloadAPI(download_queue, settings.api_key), download_queue, "download", owners, guests
+            EnvKeyDownloadAPI(download_queue, settings.api_key),
+            download_queue,
+            "download",
+            owners,
+            guests,
+            accounts,
         ),
         "/api/harbor/": HarborAPI(settings, notes, guests),
     }

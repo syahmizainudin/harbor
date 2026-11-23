@@ -232,7 +232,8 @@ class DownloadLaneTests(HttpBase):
         status, res = self.req("Ann", "POST", "/api/admin/lane-set", body)
         self.assertEqual(status, 200, res)
         self.assertEqual(
-            res["lanes"], [{"name": "manga", "workers": 2, "rate": 5 * 1024**2, "hours": "01:00-07:00"}]
+            res["lanes"],
+            [{"name": "manga", "workers": 2, "rate": 5 * 1024**2, "hours": "01:00-07:00", "roles": None}],
         )
         (lane,) = self.dq.lanes()  # live, no restart
         self.assertEqual(
@@ -278,6 +279,52 @@ class DownloadLaneTests(HttpBase):
         log = [(x["action"], x["target"]) for x in self.acc.audit_log(10, 0, "")["items"]]
         self.assertIn(("download lane saved", "manga"), log)
         self.assertIn(("download lane removed", "manga"), log)
+
+    def lane_add(self, lane):
+        dest = self.dir / "dl"
+        dest.mkdir(exist_ok=True)
+        url = "http://127.0.0.1:9/a.zip"
+        return {"urls": [url], "dest": str(dest), "lane": lane, "after": {"convert": False}}
+
+    def test_lane_kept_to_some_roles(self):
+        roles = {r["name"]: r["id"] for r in self.acc.roles()}
+        body = {"name": "vip", "workers": 1, "roles": [roles["Reader"]]}
+        status, res = self.req("Ann", "POST", "/api/admin/lane-set", body)
+        self.assertEqual((status, res["lanes"][0]["roles"]), (200, [roles["Reader"]]), res)
+        self.req("Ann", "POST", "/api/admin/lane-set", {"name": "open", "workers": 1})
+        ann = self.req("Ann", "GET", "/api/state")[1]
+        self.assertEqual([x["name"] for x in ann["download_lanes"]], ["vip", "open"])  # Admin always may
+        self.assertNotIn(roles["Admin"], [x["id"] for x in ann["lane_roles"]])
+        mo = self.req("Mo", "GET", "/api/state")[1]
+        self.assertEqual([x["name"] for x in mo["download_lanes"]], ["open"])  # Member isn't on the list
+        status, err = self.req("Mo", "POST", "/api/download/add", self.lane_add("vip"))
+        self.assertEqual((status, err), (403, {"error": "you can't use the download lane 'vip'"}))
+        self.assertEqual(self.req("Mo", "POST", "/api/download/add", self.lane_add("open"))[0], 200)
+        self.assertEqual(self.req("Ann", "POST", "/api/download/add", self.lane_add("vip"))[0], 200)
+        # Admin only: an empty list
+        self.req("Ann", "POST", "/api/admin/lane-set", {**body, "roles": [roles["Admin"]]})
+        self.assertEqual(self.acc.lanes()[0]["roles"], [])
+        log = self.acc.audit_log(10, 0, "download lane saved")["items"]
+        self.assertTrue(log[0]["detail"].endswith("for Admin only"), log[0])
+        for bad in ({**body, "roles": "Reader"}, {**body, "roles": [True]}):
+            self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-set", bad)[0], 400, bad)
+        self.assertEqual(self.req("Ann", "POST", "/api/admin/lane-set", {**body, "roles": [999]})[0], 404)
+
+    def test_removed_role_leaves_lane_lists(self):
+        role = self.acc.add_role("Helpers", ["download"])
+        self.acc.set_lane("vip", 1, "", "", [role["id"]])
+        self.acc.remove_role(role["id"])
+        self.assertEqual(self.acc.lanes()[0]["roles"], [])
+
+    def test_lane_pause_needs_download_lanes(self):
+        self.req("Ann", "POST", "/api/admin/lane-set", {"name": "manga", "workers": 1})
+        pause = {"name": "manga", "paused": True}
+        self.assertEqual(self.req("Mo", "POST", "/api/download/lane-pause", pause)[0], 403)
+        self.assertFalse(self.dq.lanes_state()[0]["paused"])
+        status, res = self.req("Ann", "POST", "/api/download/lane-pause", pause)
+        self.assertEqual((status, res["lanes"][0]["paused"]), (200, True))
+        self.assertTrue(self.req("Mo", "GET", "/api/state")[1]["download_lanes"][0]["paused"])
+        self.assertEqual(self.req("Ann", "POST", "/api/download/lane-pause", {"name": "nope"})[0], 400)
 
     def test_guests_see_no_lanes(self):
         self.req("Ann", "POST", "/api/admin/lane-set", {"name": "manga", "workers": 1})

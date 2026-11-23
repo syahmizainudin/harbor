@@ -96,6 +96,9 @@ MIGRATIONS: list[str] = [
            name TEXT PRIMARY KEY COLLATE NOCASE, workers INTEGER NOT NULL DEFAULT 1,
            rate INTEGER NOT NULL DEFAULT 0, hours TEXT NOT NULL DEFAULT '',
            position INTEGER NOT NULL DEFAULT 0)""",
+    # 8: which roles may use a download lane: NULL every role, or a JSON list of role ids (Admin
+    # always may).
+    """ALTER TABLE download_lanes ADD COLUMN roles_json TEXT""",
 ]
 LANES_MAX = 20
 TOKEN_SCOPES = {"extension": "Chrome extension", "reader": "Reader app"}
@@ -454,6 +457,15 @@ class Accounts:
                             "UPDATE library_access SET roles_json = ? WHERE library_id = ?",
                             (json.dumps(roles), lid),
                         )
+                for row in self._db.execute(
+                    "SELECT name, roles_json FROM download_lanes WHERE roles_json IS NOT NULL"
+                ).fetchall():
+                    lane_roles = json.loads(row["roles_json"])
+                    if r["id"] in lane_roles:
+                        self._db.execute(
+                            "UPDATE download_lanes SET roles_json = ? WHERE name = ?",
+                            (json.dumps([x for x in lane_roles if x != r["id"]]), row["name"]),
+                        )
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -464,27 +476,56 @@ class Accounts:
     # ------------------------------------------------------------ library access
     # ------------------------------------------------------------ download lanes
     def lanes(self) -> list[dict]:
-        """Download lanes in order: name, workers, rate (bytes a second) and hours ('' for none)."""
+        """Download lanes in order: name, workers, rate (bytes a second), hours ('' for none) and
+        roles (None: every role; else the role ids that may use it besides Admin)."""
         return [
-            {"name": r["name"], "workers": r["workers"], "rate": r["rate"], "hours": r["hours"]}
+            {
+                "name": r["name"],
+                "workers": r["workers"],
+                "rate": r["rate"],
+                "hours": r["hours"],
+                "roles": None if r["roles_json"] is None else json.loads(r["roles_json"]),
+            }
             for r in self._q("SELECT * FROM download_lanes ORDER BY position, lower(name)")
         ]
 
-    def set_lane(self, name: str, workers, rate: str, hours: str) -> dict:
+    @staticmethod
+    def lane_allowed(lane: dict, user) -> bool:
+        """Whether ``user`` may put downloads in ``lane`` (one of ``lanes()``)."""
+        if lane["roles"] is None or (user and user.get("admin")):
+            return True
+        return bool(user) and user.get("role_id") in lane["roles"]
+
+    def _role_ids(self, roles) -> list | None:
+        """None (every role), or a checked, sorted list of role ids without Admin."""
+        if roles is None:
+            return None
+        if not isinstance(roles, list) or any(isinstance(x, bool) or not isinstance(x, int) for x in roles):
+            raise ValueError("roles must be null (everyone) or a list of role ids")
+        known = {r["id"] for r in self.roles()}
+        if set(roles) - known:
+            raise KeyError(f"no role {sorted(set(roles) - known)[0]}")
+        return sorted(set(roles) - {ADMIN_ROLE})
+
+    def set_lane(self, name: str, workers, rate: str, hours: str, roles: list | None = None) -> dict:
         """Add a lane, or change the one with this name (any case). ``rate`` like "5M" ("" or "0":
-        no limit of its own), ``hours`` like "01:00-07:00" ("": the queue's). Checked with dl-queue's
-        own rules."""
+        no limit of its own), ``hours`` like "01:00-07:00" ("": the queue's), ``roles`` None for
+        every role or the role ids that may use it (Admin always may). Checked with dl-queue's own
+        rules."""
         from dlqueue.download import Lane, parse_hours, parse_size
 
         rate_n = parse_size(str(rate or "0"))
         hours = str(hours or "").strip()
         lane = Lane(str(name), workers, rate_n, parse_hours(hours))  # raises ValueError
+        roles = self._role_ids(roles)
+        roles_json = None if roles is None else json.dumps(roles)
         with self._lock:
             row = self._db.execute("SELECT name FROM download_lanes WHERE name = ?", (lane.name,)).fetchone()
             if row:
                 self._db.execute(
-                    "UPDATE download_lanes SET name = ?, workers = ?, rate = ?, hours = ? WHERE name = ?",
-                    (lane.name, lane.workers, lane.rate, hours, row["name"]),
+                    """UPDATE download_lanes SET name = ?, workers = ?, rate = ?, hours = ?, roles_json = ?
+                       WHERE name = ?""",
+                    (lane.name, lane.workers, lane.rate, hours, roles_json, row["name"]),
                 )
             else:
                 n = self._db.execute(
@@ -493,10 +534,11 @@ class Accounts:
                 if n[0] >= LANES_MAX:
                     raise ValueError(f"there can be at most {LANES_MAX} download lanes")
                 self._db.execute(
-                    "INSERT INTO download_lanes(name, workers, rate, hours, position) VALUES (?,?,?,?,?)",
-                    (lane.name, lane.workers, lane.rate, hours, n[1] + 1),
+                    """INSERT INTO download_lanes(name, workers, rate, hours, position, roles_json)
+                       VALUES (?,?,?,?,?,?)""",
+                    (lane.name, lane.workers, lane.rate, hours, n[1] + 1, roles_json),
                 )
-        return {"name": lane.name, "workers": lane.workers, "rate": lane.rate, "hours": hours}
+        return {"name": lane.name, "workers": lane.workers, "rate": lane.rate, "hours": hours, "roles": roles}
 
     def remove_lane(self, name: str) -> bool:
         with self._lock:
