@@ -23,7 +23,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/maint.py` | `harbor backup` and `harbor doctor` |
 | `harbor/state.py` | `QueueStore`: saves unfinished jobs shortly after they change (changes batched, at most one save per `SAVE_DELAY`), restores them at start-up through the queues' `add` |
 | `harbor/accounts.py` | `Accounts` (users, sessions, extension tokens), `HarborSignIn` (the server's `auth`), `AccountAPI` at `/api/account/` |
-| `harbor/login.html` | The sign-in page, served at `/login` |
+| `harbor/login.html` | Served at `/login` (the shared server's redirect target, and where the Library frame goes on a 401). It forwards to `/?signin=1&next=…`, where the page signs in through its `#signInDlg` dialog; its own form is only the fallback if `/api/account/status` fails |
 | `harbor/perms.py` | `GuardedQueueAPI` (permissions on the queue APIs), `JobOwners` (who queued each job), `can` |
 | `harbor/admin.py` | `AdminAPI` at `/api/admin/`: users and roles, with the no-escalation rule |
 | `docs/plan-users.md` | The plan for accounts, permissions and per-user settings, phase by phase |

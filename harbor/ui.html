@@ -64,7 +64,6 @@
   #seriesEditDlg { width: min(560px, calc(100vw - 32px)); }
   #seriesEditDlg label { margin: 10px 0 4px; }
   #seriesEditDlg input, #seriesEditDlg textarea { width: 100%; }
-  #acctDlg section + section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
   #acctDlg h3 { font-size: 14px; margin: 0 0 8px; }
   #acctDlg input { width: 100%; margin-bottom: 8px; }
   .tokens { list-style: none; margin: 0 0 8px; padding: 0; }
@@ -148,6 +147,14 @@
   #picker .dlg-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   #picker .dlg-body > * { flex: none; }
   #picker .dirlist { flex: 1 1 0; min-height: 0; max-height: none; }
+  /* The account dialog keeps its height while switching sub-tabs. */
+  #acctDlg .dlg-body { min-height: min(340px, calc(100vh - 160px)); }
+  /* Sign in */
+  #signInDlg { width: min(380px, calc(100vw - 32px)); }
+  #signInDlg .dlg-body { padding: 8px 20px 20px; }
+  #signInDlg label { display: block; font-weight: 600; margin: 12px 0 6px; }
+  #signInDlg input { width: 100%; }
+  #signInDlg #siGo { width: 100%; margin-top: 18px; }
   #picker .msg { min-height: 1.4em; }
   .shortcuts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
   .dirlist { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
@@ -450,7 +457,8 @@
 <dialog id="acctDlg" aria-labelledby="acctTitle">
   <div class="dlg-head"><strong id="acctTitle" style="flex:1">Account</strong><button type="button" class="link" id="acctClose">Close</button></div>
   <div class="dlg-body">
-    <section>
+    <nav class="subtabs" id="acctTabs" role="tablist" aria-label="Account sections"></nav>
+    <section id="acctPwBox">
       <h3>Change password</h3>
       <form id="pwForm">
         <input type="text" name="username" id="pwUser" autocomplete="username" hidden>
@@ -461,19 +469,19 @@
         <div class="msg" id="pwMsg"></div>
       </form>
     </section>
-    <section>
+    <section id="acctPrefsBox" hidden>
       <h3>Your defaults</h3>
       <p class="note">Quality, effort, deleting originals, the download folder and how the API key is sent are saved with your account as you change them, in any browser. The Chrome extension uses them too.</p>
       <button id="prefsReset">Go back to harbor's defaults</button>
       <div class="msg" id="prefsMsg"></div>
     </section>
-    <section>
+    <section id="acctSessionsBox" hidden>
       <h3>Where you're signed in</h3>
       <p class="note">Each browser that signed in to your account. Sign one out if you no longer use it or don't recognise it.</p>
       <ul class="tokens" id="sessionList"></ul>
       <div class="msg" id="sessionMsg"></div>
     </section>
-    <section>
+    <section id="acctTokensBox" hidden>
       <h3>Tokens: Chrome extension and reader apps</h3>
       <p class="note">The Chrome extension and reader apps (Panels, Chunky, KOReader…) sign in with a token instead of your password. Create one for each, and revoke it here if a device is lost. A reader-app token can only read the library.</p>
       <ul class="tokens" id="tokenList"></ul>
@@ -486,6 +494,26 @@
     </section>
   </div>
   <div class="dlg-foot"><span class="note">Signing out ends this browser's session.</span><button id="signOut">Sign out</button></div>
+</dialog>
+
+<dialog id="signInDlg" aria-labelledby="siTitle">
+  <div class="dlg-head"><strong id="siTitle" style="flex:1">Sign in</strong><button type="button" class="link" id="siClose">Close</button></div>
+  <div class="dlg-body">
+    <p class="note" id="siWhy">Sign in to convert, download and keep your favourites and reading progress.</p>
+    <form id="siForm" hidden>
+      <label for="siName">Name</label>
+      <input id="siName" name="username" autocomplete="username" required>
+      <label for="siPassword">Password</label>
+      <input id="siPassword" name="password" type="password" autocomplete="current-password" required>
+      <button class="primary" id="siGo">Sign in</button>
+      <div class="msg" id="siMsg" role="alert"></div>
+    </form>
+    <div id="siSetup" class="note" hidden>
+      <p>No accounts yet. Create the first one, an admin, on the computer running harbor:</p>
+      <p><code>harbor user add NAME --admin</code></p>
+      <p>Then reload this page.</p>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="picker" aria-labelledby="pickerTitle">
@@ -529,7 +557,7 @@ function base(p) { return String(p || "").split("/").pop(); }
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} :
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (r.status === 401) { location.href = "/login"; throw new Error("signed out"); }
+  if (r.status === 401) { openSignIn("Your session has ended. Sign in again to carry on."); throw new Error("signed out"); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
@@ -1295,7 +1323,29 @@ function renderAccount(a) {
   $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)} <span class="note">· ${t.scope === "reader" ? "reader app" : "Chrome extension"}</span><br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
     <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
 }
-$("acctBtn").onclick = () => { say($("pwMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); $("tokenShow").hidden = true; loadSessions(); $("acctDlg").showModal(); };
+// One sub-tab per section, like the Admin tab; the last one opened is remembered.
+const ACCOUNT_SECTIONS = [
+  ["password", "acctPwBox", "Password"],
+  ["defaults", "acctPrefsBox", "Defaults"],
+  ["sessions", "acctSessionsBox", "Sessions"],
+  ["tokens", "acctTokensBox", "Tokens"],
+];
+let acctTab = store.get("accountTab", "password");
+function showAccountTab(key) {
+  if (!ACCOUNT_SECTIONS.some(([k]) => k === key)) key = "password";
+  acctTab = key;
+  store.set("accountTab", key);
+  setHTML($("acctTabs"), ACCOUNT_SECTIONS.map(([k, , label]) =>
+    `<button role="tab" data-acct="${k}" aria-selected="${k === key}">${label}</button>`).join(""));
+  for (const [k, box] of ACCOUNT_SECTIONS) $(box).hidden = k !== key;
+  if (key === "sessions") loadSessions();
+}
+$("acctTabs").onclick = e => { const b = e.target.closest("[data-acct]"); if (b) showAccountTab(b.dataset.acct); };
+$("acctBtn").onclick = () => {
+  say($("pwMsg"), ""); say($("prefsMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); $("tokenShow").hidden = true;
+  showAccountTab(acctTab);
+  $("acctDlg").showModal();
+};
 // A short description of a browser from its User-Agent, such as "Chrome on Windows".
 function browserName(ua) {
   if (!ua) return "Unknown browser";
@@ -1319,7 +1369,47 @@ $("sessionList").onclick = async e => {
   try { await api("/api/account/session-revoke", { id: b.dataset.session }); say($("sessionMsg"), "Signed out."); loadSessions(); }
   catch (err) { say($("sessionMsg"), err.message, true); }
 };
-$("signIn").onclick = () => { location.href = "/login"; };
+// Sign in: a dialog over the page. /login (the server's redirect target, and where the Library
+// frame goes on a 401) sends here with ?signin, and next= when it came from another page.
+function signInNext() {
+  const n = new URLSearchParams(location.search).get("next") || "/";
+  return n.startsWith("/") && !n.startsWith("//") ? n : "/";  // only this site
+}
+async function openSignIn(why) {
+  if ($("signInDlg").open) return;
+  $("siWhy").textContent = why || "Sign in to convert, download and keep your favourites and reading progress.";
+  say($("siMsg"), "");
+  let accounts = true;
+  try { accounts = (await fetch("/api/account/status").then(r => r.json())).accounts; } catch {}
+  $("siForm").hidden = !accounts;
+  $("siSetup").hidden = accounts;
+  for (const d of document.querySelectorAll("dialog[open]")) d.close();
+  $("signInDlg").showModal();
+  if (accounts) $("siName").focus();
+}
+$("signIn").onclick = () => openSignIn();
+$("siClose").onclick = () => $("signInDlg").close();
+$("signInDlg").addEventListener("close", () => {
+  if (new URLSearchParams(location.search).has("signin")) history.replaceState(null, "", "/");
+});
+$("siForm").onsubmit = async e => {
+  e.preventDefault();
+  $("siGo").disabled = true;
+  say($("siMsg"), "");
+  try {
+    const r = await fetch("/api/account/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("siName").value, password: $("siPassword").value }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    location.replace(signInNext());
+  } catch (err) {
+    say($("siMsg"), err.message, true);
+    $("siPassword").select();
+  } finally { $("siGo").disabled = false; }
+};
+if (new URLSearchParams(location.search).has("signin")) openSignIn();
 $("acctClose").onclick = () => $("acctDlg").close();
 $("pwForm").onsubmit = async e => {
   e.preventDefault();
@@ -1360,7 +1450,7 @@ $("prefsReset").onclick = async () => {
 };
 $("signOut").onclick = async () => {
   try { await api("/api/account/logout", {}); } catch {}
-  location.href = "/login";
+  location.replace("/");  // back to the home page, as a guest
 };
 
 /* ---------- polling ---------- */
@@ -1377,7 +1467,7 @@ function refresh() {
   if (polling) return pollAgain ||= polling.then(() => { pollAgain = null; return refresh(); });
   clearTimeout(pollTimer);
   polling = (async () => {
-    try { render(await api("/api/state")); }  // a 401 sends the page to /login (api())
+    try { render(await api("/api/state")); }  // a 401 opens the sign-in dialog (api())
     catch (e) { say($("msg"), "Lost connection to the server: " + e.message, true); }
   })().finally(() => {
     polling = null;

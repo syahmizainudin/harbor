@@ -44,7 +44,8 @@ harbor user add YOUR-NAME --admin     # asks for a password (8 or more character
 `harbor user add` takes `--role NAME` (default Member). The last admin who can sign in can't be disabled, removed or given another role. Each user has their own reading progress, Continue reading, favourites and reader settings in the Library tab. Book and series details are shared. Reading progress from before accounts existed goes to the first admin when harbor starts.
 
 - **Signing in:** a signed-out visit shows the Library tab and a **Sign in** button. A session lasts `HARBOR_SESSION_DAYS` (30) days after it was last used. After 5 wrong passwords for a name, that name is locked for 15 minutes.
-- **Your account** (bottom of the sidebar): change your password, which signs out your other browsers, see every browser signed in to your account and sign any of them out, make tokens for the Chrome extension, and sign out.
+- **Signing in** happens in a dialog over the page (**Sign in**, bottom of the sidebar). Signing out takes you back to the home page as a guest.
+- **Your account** (bottom of the sidebar), in sub-tabs: **Password** (changing it signs out your other browsers), **Defaults**, **Sessions** (every browser signed in to your account; sign any of them out) and **Tokens** (for the Chrome extension and reader apps). Sign out is at the bottom.
 - **Roles:** every account has one. Admin has every permission and can't be changed. Member (convert, download, delete originals, read the library) and Reader (read the library) come built in, and admins can add more. Tabs and buttons you can't use are hidden, and harbor refuses them anyway.
 
   | Permission | Lets you |

@@ -2,6 +2,12 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
+## Unreleased
+
+- **Sign in in a dialog:** the **Sign in** button opens a sign-in dialog over the page instead of a separate, empty page. `/login` (the server's redirect, and the Library tab when a session ends) forwards to it and still returns you to where you came from. When your session ends while the page is open, the dialog opens with a note instead of the page jumping away.
+- **Signing out** takes you to the home page as a guest instead of the sign-in page.
+- **Account dialog sub-tabs:** Password, Defaults, Sessions and Tokens, like the Admin tab. The last one you opened is remembered.
+
 ## 0.2.4
 
 Pins cbz-webp 0.5.1, dl-queue 0.6.0 and cbz-shelf 0.6.0.

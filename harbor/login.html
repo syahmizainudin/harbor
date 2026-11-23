@@ -83,7 +83,9 @@ const next = () => {
   try {
     const st = await fetch("/api/account/status").then(r => r.json());
     if (st.signed_in) return location.replace(next());
-    $(st.accounts ? "form" : "setup").hidden = false;
+    // Signing in happens in a dialog on the home page; this page stays as the fallback.
+    const n = next();
+    return location.replace("/?signin=1" + (n === "/" ? "" : "&next=" + encodeURIComponent(n)));
   } catch { $("form").hidden = false; }
 })();
 $("form").onsubmit = async e => {
