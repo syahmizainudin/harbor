@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harbor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 64 64&quot; role=&quot;img&quot; aria-label=&quot;Harbor&quot;%3E%0A  %3Cdefs%3E%0A    %3ClinearGradient id=&quot;harbor-bg&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;%3E%0A      %3Cstop offset=&quot;0&quot; stop-color=&quot;%233b7cf0&quot;/%3E%0A      %3Cstop offset=&quot;1&quot; stop-color=&quot;%23173a86&quot;/%3E%0A    %3C/linearGradient%3E%0A  %3C/defs%3E%0A  %3Crect width=&quot;64&quot; height=&quot;64&quot; rx=&quot;14&quot; fill=&quot;url%28%23harbor-bg%29&quot;/%3E%0A  %3Cg fill=&quot;none&quot; stroke=&quot;%23ffffff&quot; stroke-width=&quot;4&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;%3E%0A    %3Ccircle cx=&quot;32&quot; cy=&quot;13&quot; r=&quot;5&quot;/%3E%0A    %3Cpath d=&quot;M32 18v28&quot;/%3E%0A    %3Cpath d=&quot;M23 25h18&quot;/%3E%0A    %3Cpath d=&quot;M15 34c1.5 8.5 8 13 17 13s15.5-4.5 17-13&quot;/%3E%0A    %3Cpath d=&quot;M10.5 38.5 15 33.5l5 4&quot;/%3E%0A    %3Cpath d=&quot;M53.5 38.5 49 33.5l-5 4&quot;/%3E%0A  %3C/g%3E%0A  %3Cpath d=&quot;M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0&quot; fill=&quot;none&quot; stroke=&quot;%239cc4ff&quot; stroke-width=&quot;3&quot; stroke-linecap=&quot;round&quot;/%3E%0A%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2f6fed; --accent-text: #fff; --ok: #16794c; --warn: #a15c00; --bad: #c0362c;
+    --run: #2f6fed; --bar: #e8edf7; --chip: #eef1f5; --hover: #f1f4f9; --shadow: 0 10px 30px rgba(16,24,40,.18);
+    color-scheme: light dark;  /* native scrollbars and controls follow the theme */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1f27; --text: #e6e9ef; --muted: #98a2b3; --line: #2a313c;
+      --accent: #5b8cff; --accent-text: #0b1020; --ok: #4cc38a; --warn: #f0a742; --bad: #ff6b5e;
+      --run: #5b8cff; --bar: #252c38; --chip: #232a35; --hover: #222833; --shadow: 0 10px 30px rgba(0,0,0,.5);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  /* Layout: a sidebar with the tabs, and the open tab filling the rest of the window. */
+  body { display: grid; grid-template-columns: auto 1fr; height: 100vh; overflow: hidden; }
+  nav.side { display: flex; flex-direction: column; gap: 4px; width: 200px; padding: 14px 10px; background: var(--panel);
+             border-right: 1px solid var(--line); overflow: auto; }
+  main { min-width: 0; overflow: auto; }
+  .pane-inner { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 18px; margin: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 14px; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .tabs { display: flex; flex-direction: column; gap: 2px; }
+  .tab { display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 8px 10px; color: var(--muted);
+         font-weight: 600; text-align: left; }
+  .tab svg { width: 18px; height: 18px; flex: none; }
+  .tab:hover { background: var(--hover); filter: none; }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--chip); box-shadow: inset 3px 0 0 var(--accent); }
+  .tab .badge { margin-left: auto; }
+  .side-acct { margin-top: auto; }
+  .side-btn { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; color: var(--text);
+              text-align: left; padding: 8px 10px; font-weight: 600; }
+  .side-btn svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+  .side-btn:hover { background: var(--hover); filter: none; }
+  .side-btn .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.narrow .side-btn { justify-content: center; }
+  body.narrow .side-btn .txt { display: none; }
+  #acctDlg { width: min(520px, calc(100vw - 32px)); }
+  details.hist > summary { cursor: pointer; list-style-position: inside; }
+  details.hist .more { text-align: center; margin-top: 8px; }
+  /* sub-tabs: the Admin tab and the Account dialog */
+  .subtabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .subtabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; color: var(--muted); }
+  .subtabs button:hover { color: var(--text); filter: none; }
+  .subtabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  #acctDlg h3 { font-size: 14px; margin: 0 0 8px; }
+  #acctDlg input { width: 100%; margin-bottom: 8px; }
+  #siteKeyForm .field { margin-bottom: 8px; }
+  #siteKeyForm .field input { margin-bottom: 0; }
+  .tokens { list-style: none; margin: 0 0 8px; padding: 0; }
+  .tokens li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .newtoken { word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0; }
+  #collapse { width: 100%; border: none; background: none; color: var(--muted); text-align: left; padding: 8px 10px; }
+  #collapse:hover { background: var(--hover); filter: none; }
+  /* Collapsed: icons only. */
+  body.narrow nav.side { width: 58px; }
+  body.narrow .brand span, body.narrow .tab .txt, body.narrow #collapse .txt { display: none; }
+  body.narrow .tab .badge { position: absolute; margin: -16px 0 0 10px; }
+  body.narrow .tab { position: relative; justify-content: center; }
+  /* While a book is open, the reader gets the whole window. */
+  body.reading { grid-template-columns: 1fr; }
+  body.reading nav.side { display: none; }
+  .badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 999px;
+           background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 18px; text-align: center; }
+  .badge:empty { display: none; }
+  [hidden] { display: none !important; }
+  /* Until the first /api/state says what this visitor may use, show no tabs and no pane, so a
+     signed-out visitor never sees Convert or Download for a moment. render() removes the class. */
+  body.loading .tabs, body.loading main { visibility: hidden; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label, .label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .label-row label { margin: 0; }
+  textarea, input[type=text], input[type=password], input[type=number], select {
+    padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  textarea { width: 100%; min-height: 64px; font: 13px ui-monospace, Menlo, Consolas, monospace; resize: vertical; }
+  .mono { font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  .field { display: flex; gap: 8px; }
+  .field input { flex: 1; min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 16px; margin-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; margin-top: 12px; }
+  .check { display: flex; align-items: center; gap: 6px; font-weight: 400; margin: 0; }
+  button { border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 6px 12px;
+           border-radius: 8px; cursor: pointer; font: inherit; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:hover { filter: brightness(0.96); }
+  button.link { border: none; background: none; padding: 2px 4px; color: var(--accent); }
+  button.small { padding: 3px 10px; font-size: 13px; }
+  .msg { margin-top: 10px; min-height: 1.2em; color: var(--muted); }
+  .msg.err { color: var(--bad); }
+  .bar-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+  .chip .link { font-size: 12px; padding: 0 0 0 4px; }
+  .chip b { color: var(--text); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; border-top: none; }
+  td.name { word-break: break-all; }
+  td.name .dir { color: var(--muted); font-size: 12px; }
+  .state { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .s-queued { color: var(--muted); } .s-running { color: var(--run); } .s-done { color: var(--ok); }
+  .s-skipped { color: var(--warn); } .s-failed { color: var(--bad); } .s-cancelled { color: var(--muted); }
+  .prog { height: 6px; background: var(--bar); border-radius: 3px; overflow: hidden; margin-top: 4px; width: 120px; }
+  .prog > i { display: block; height: 100%; background: var(--run); }
+  .prog.indet > i { width: 30% !important; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+  .size { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px; }
+  /* folder picker */
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text);
+           width: min(640px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .dlg-head, .dlg-foot { padding: 12px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .dlg-head { border-bottom: 1px solid var(--line); }
+  .dlg-foot { border-top: 1px solid var(--line); justify-content: space-between; }
+  .dlg-body { padding: 8px 16px; }
+  /* The folder picker keeps one size: the folder list fills it and scrolls inside. */
+  #picker { height: min(560px, calc(100vh - 32px)); }
+  #picker[open] { display: flex; flex-direction: column; }
+  #picker .dlg-head, #picker .dlg-foot { flex: none; }
+  #picker .dlg-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #picker .dlg-body > * { flex: none; }
+  #picker .dirlist { flex: 1 1 0; min-height: 0; max-height: none; }
+  /* The account dialog keeps its height while switching sub-tabs. */
+  #acctDlg .dlg-body { min-height: min(340px, calc(100vh - 160px)); }
+  /* Sign in */
+  #signInDlg { width: min(380px, calc(100vw - 32px)); }
+  #signInDlg .dlg-body { padding: 8px 20px 20px; }
+  #signInDlg label { display: block; font-weight: 600; margin: 12px 0 6px; }
+  #signInDlg input { width: 100%; }
+  #signInDlg #siGo { width: 100%; margin-top: 18px; }
+  #picker .msg { min-height: 1.4em; }
+  .shortcuts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .dirlist { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .dirlist li button { width: 100%; text-align: left; border: none; border-radius: 0; background: none; padding: 7px 10px; }
+  .dirlist li button:hover { background: var(--hover); filter: none; }
+  .dirlist li + li { border-top: 1px solid var(--line); }
+  .dirlist .empty { padding: 16px; }
+  /* @parts:style */
+  @media (max-width: 720px) {
+    /* Small screens: the sidebar becomes a bar along the top. */
+    body, body.narrow { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    nav.side, body.narrow nav.side { width: auto; flex-direction: row; align-items: center; padding: 6px 8px;
+                                     border-right: none; border-bottom: 1px solid var(--line); }
+    .tabs { flex-direction: row; }
+    .side-foot, .brand span, body.narrow .tab .txt, .side-btn .txt { display: none; }
+    .side-acct { margin: 0 0 0 auto; }
+    body.narrow .tab .badge { position: static; margin: 0 0 0 6px; }
+    thead { display: none; }
+    tr { display: block; border-top: 1px solid var(--line); padding: 8px 0; }
+    td { display: block; border: none; padding: 2px 0; }
+  }
+</style>
+</head>
+<body class="loading">
+<nav class="side" aria-label="Harbor">
+  <h1 class="brand" title="Harbor: recompress .zip / .cbz archives to WebP .cbz, download files and convert them as they arrive, and read your library">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Harbor">
+  <defs>
+    <linearGradient id="harbor-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b7cf0"/>
+      <stop offset="1" stop-color="#173a86"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#harbor-bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="13" r="5"/>
+    <path d="M32 18v28"/>
+    <path d="M23 25h18"/>
+    <path d="M15 34c1.5 8.5 8 13 17 13s15.5-4.5 17-13"/>
+    <path d="M10.5 38.5 15 33.5l5 4"/>
+    <path d="M53.5 38.5 49 33.5l-5 4"/>
+  </g>
+  <path d="M9 55.5c3.5-2.8 7.5-2.8 11 0s7.5 2.8 11 0 7.5-2.8 11 0 7.5 2.8 11 0" fill="none" stroke="#9cc4ff" stroke-width="3" stroke-linecap="round"/>
+</svg>
+  <span>Harbor</span></h1>
+
+  <div class="tabs" role="tablist" aria-orientation="vertical">
+    <!-- @parts:tab -->
+  </div>
+  <div class="side-acct" id="acct" hidden>
+    <button class="side-btn" id="acctBtn" title="Your account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="txt" id="acctName"></span></button>
+  </div>
+  <div class="side-acct" id="signInBox" hidden>
+    <button class="side-btn" id="signIn" title="Sign in to convert, download and keep favourites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg><span class="txt">Sign in</span></button>
+  </div>
+  <div class="side-foot"><button id="collapse" title="Collapse the sidebar"><span aria-hidden="true">«</span> <span class="txt">Collapse</span></button></div>
+</nav>
+
+<main>
+  <!-- @parts:pane -->
+</main>
+
+<!-- @parts:dialog -->
+<dialog id="acctDlg" aria-labelledby="acctTitle">
+  <div class="dlg-head"><strong id="acctTitle" style="flex:1">Account</strong><button type="button" class="link" id="acctClose">Close</button></div>
+  <div class="dlg-body">
+    <nav class="subtabs" id="acctTabs" role="tablist" aria-label="Account sections"></nav>
+    <section id="acctPwBox">
+      <h3>Change password</h3>
+      <form id="pwForm">
+        <input type="text" name="username" id="pwUser" autocomplete="username" hidden>
+        <input type="password" id="pwCur" placeholder="Current password" autocomplete="current-password" aria-label="Current password">
+        <input type="password" id="pwNew" placeholder="New password (8 or more characters)" autocomplete="new-password" aria-label="New password">
+        <input type="password" id="pwNew2" placeholder="New password again" autocomplete="new-password" aria-label="New password again">
+        <button class="primary" id="pwSave">Change password</button>
+        <div class="msg" id="pwMsg"></div>
+      </form>
+    </section>
+    <section id="acctPrefsBox" hidden>
+      <h3>Your defaults</h3>
+      <p class="note">Quality, effort, deleting originals, the download folder and how the API key is sent are saved with your account as you change them, in any browser. The Chrome extension uses them too.</p>
+      <button id="prefsReset">Go back to harbor's defaults</button>
+      <div class="msg" id="prefsMsg"></div>
+    </section>
+    <section id="acctSessionsBox" hidden>
+      <h3>Where you're signed in</h3>
+      <p class="note">Each browser that signed in to your account. Sign one out if you no longer use it or don't recognise it.</p>
+      <ul class="tokens" id="sessionList"></ul>
+      <div class="msg" id="sessionMsg"></div>
+    </section>
+    <section id="acctSitesBox" hidden>
+      <h3>Saved site keys</h3>
+      <p class="note">API keys and tokens for the sites you download from. With “Saved site key (automatic)” on the Download tab (or in a preset), harbor sends the key whose site matches each download's address, over https only. Keys are stored encrypted and never shown again; to change one, enter it again.</p>
+      <ul class="tokens" id="siteKeyList"></ul>
+      <form id="siteKeyForm" autocomplete="off">
+        <input type="text" id="skLabel" placeholder="Name, such as Example API" maxlength="60" aria-label="Name">
+        <input type="text" id="skHost" class="mono" placeholder="Site: api.example.com or *.example.com" aria-label="Site">
+        <input type="text" id="skPath" class="mono" placeholder="Path, optional, such as /files/" aria-label="Path">
+        <div class="field">
+          <select id="skMode" aria-label="Sent as"><option value="bearer">Authorization: Bearer &lt;key&gt;</option><option value="header">Custom header</option><option value="query">Query parameter</option></select>
+          <input type="text" id="skName" class="mono" placeholder="X-API-Key" hidden aria-label="Header or parameter name">
+        </div>
+        <input type="password" id="skSecret" placeholder="Key or token" autocomplete="new-password" aria-label="Key or token">
+        <div class="field"><button class="primary" id="skSave">Save key</button><button type="button" class="link" id="skCancel" hidden>Cancel editing</button></div>
+        <div class="msg" id="skMsg"></div>
+      </form>
+    </section>
+    <section id="acctTokensBox" hidden>
+      <h3>Tokens: Chrome extension and reader apps</h3>
+      <p class="note">The Chrome extension and reader apps (Panels, Chunky, KOReader…) sign in with a token instead of your password. Create one for each, and revoke it here if a device is lost. A reader-app token can only read the library.</p>
+      <ul class="tokens" id="tokenList"></ul>
+      <div class="field">
+        <select id="tokenScope" aria-label="Token for"><option value="extension">Chrome extension</option><option value="reader">Reader app (OPDS)</option></select>
+        <input type="text" id="tokenLabel" placeholder="Name, such as Work laptop" aria-label="Token name"><button id="tokenNew">Create token</button></div>
+      <div id="tokenShow" hidden><div class="note">Copy it now; it won't be shown again.</div><div class="newtoken mono" id="tokenValue"></div><button class="small" id="tokenCopy">Copy</button>
+        <div class="note" id="tokenReaderHow" hidden style="margin-top:6px">In the reader app, add an OPDS catalog with the address <b class="mono" id="opdsUrl"></b>, your account name <b id="opdsUser"></b> as the user name, and this token as the password.</div></div>
+      <div class="msg" id="tokenMsg"></div>
+    </section>
+  </div>
+  <div class="dlg-foot"><span class="note">Signing out ends this browser's session.</span><button id="signOut">Sign out</button></div>
+</dialog>
+
+<dialog id="signInDlg" aria-labelledby="siTitle">
+  <div class="dlg-head"><strong id="siTitle" style="flex:1">Sign in</strong><button type="button" class="link" id="siClose">Close</button></div>
+  <div class="dlg-body">
+    <p class="note" id="siWhy">Sign in to convert, download and keep your favourites and reading progress.</p>
+    <form id="siForm" hidden>
+      <label for="siName">Name</label>
+      <input id="siName" name="username" autocomplete="username" required>
+      <label for="siPassword">Password</label>
+      <input id="siPassword" name="password" type="password" autocomplete="current-password" required>
+      <button class="primary" id="siGo">Sign in</button>
+      <div class="msg" id="siMsg" role="alert"></div>
+    </form>
+    <div id="siSetup" class="note" hidden>
+      <p>No accounts yet. Create the first one, an admin, on the computer running harbor:</p>
+      <p><code>harbor user add NAME --admin</code></p>
+      <p>Then reload this page.</p>
+    </div>
+  </div>
+</dialog>
+
+<!-- ===================== Folder picker ===================== -->
+<dialog id="picker" aria-labelledby="pickerTitle">
+  <form method="dialog" class="dlg-head" id="pickerGo">
+    <strong id="pickerTitle" style="width:100%">Choose a folder</strong>
+    <button type="button" class="small" id="pickerUp" title="Parent folder">↑ Up</button>
+    <input type="text" id="pickerPath" class="mono" style="flex:1;min-width:0" aria-label="Folder path">
+    <button type="submit" class="small" value="go">Go</button>
+  </form>
+  <div class="dlg-body">
+    <div class="shortcuts" id="pickerShortcuts"></div>
+    <ul class="dirlist" id="pickerList"></ul>
+    <div class="msg" id="pickerMsg"></div>
+  </div>
+  <div class="dlg-foot">
+    <span class="note" id="pickerInfo"></span>
+    <div class="actions">
+      <button type="button" id="pickerCancel">Cancel</button>
+      <button type="button" class="primary" id="pickerUse">Use this folder</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d = null) { try { const v = localStorage.getItem("cbzwebp." + k); return v === null ? d : v; } catch { return d; } },
+  set(k, v) { try { v === null ? localStorage.removeItem("cbzwebp." + k) : localStorage.setItem("cbzwebp." + k, v); } catch {} },
+};
+let paused = false, dlPaused = false, defaultsSet = false;
+
+function fmt(n) {
+  if (!n) return "–";
+  const u = ["B","KB","MB","GB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function base(p) { return String(p || "").split("/").pop(); }
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.status === 401) { openSignIn("Your session has ended. Sign in again to carry on."); throw new Error("signed out"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function say(el, text, err) { el.textContent = text; el.className = "msg" + (err ? " err" : ""); }
+
+/* ---------- tabs ---------- */
+function showTab(name) {
+  for (const t of document.querySelectorAll(".tab")) {
+    const on = t.dataset.tab === name;
+    t.setAttribute("aria-selected", on);
+    $("pane-" + t.dataset.tab).hidden = !on;
+  }
+  // The library loads the first time its tab opens, not with every harbor page view.
+  if (name === "library" && !$("libFrame").src) $("libFrame").src = "/library";
+  if (name === "games" && !$("gamesFrame").src) $("gamesFrame").src = "/games";
+  if (name === "admin") setTimeout(() => { loadAdminSeries(); loadAudit(); });  // after the script has fully loaded
+  store.set("tab", name);
+}
+for (const t of document.querySelectorAll(".tab")) t.onclick = () => showTab(t.dataset.tab);
+showTab(["download", "library", "games", "admin"].includes(store.get("tab")) ? store.get("tab") : "convert");
+if (store.get("tab") === "admin") $("tab-admin").hidden = false;
+
+/* ---------- permissions ---------- */
+// Without accounts there is no account in the state: everything is allowed. Signed out (account: null),
+// only the library can be read.
+const GUEST_PERMS = ["library.read"];
+let perms = null;
+const has = p => perms === null || perms.includes(p);
+const TAB_NEEDS = {
+  convert: () => has("convert"),
+  download: () => has("download"),
+  library: () => has("library.read"),
+  games: () => gamesOn && (has("games.play") || has("games.manage")),
+  admin: () => perms !== null && (has("users.manage") || has("roles.manage") || has("library.edit") || has("download.lanes") || has("settings.manage")),
+};
+function applyPerms(next) {
+  next = next ?? null;
+  if (JSON.stringify(next) === JSON.stringify(perms)) return;
+  perms = next;
+  for (const [tab, ok] of Object.entries(TAB_NEEDS)) $("tab-" + tab).hidden = !ok();
+  const current = document.querySelector('.tab[aria-selected="true"]')?.dataset.tab;
+  if (!current || !TAB_NEEDS[current]()) {
+    const first = Object.keys(TAB_NEEDS).find(t => TAB_NEEDS[t]());
+    if (first) showTab(first);
+  }
+  for (const id of ["pause", "cancelAll", "clear", "dlPause", "dlCancelAll", "dlClear"]) $(id).hidden = !has("jobs.see_all");
+  $("del").disabled = !has("delete_original");
+  if (!has("delete_original")) $("del").checked = false;
+  $("dlConvert").disabled = !has("convert");
+  if (!has("convert")) $("dlConvert").checked = false;
+  admAllowed.users = has("users.manage") && perms !== null;
+  admAllowed.roles = (has("users.manage") || has("roles.manage")) && perms !== null;
+  admAllowed.series = has("library.edit") && perms !== null;
+  admAllowed.audit = has("users.manage") && perms !== null;
+  admAllowed.lanes = has("download.lanes") && perms !== null;
+  admAllowed.settings = has("settings.manage") && perms !== null;
+  renderAdminTabs();
+  if (!$("pane-admin").hidden) { loadAdminSeries(); loadAudit(); }
+}
+
+/* ---------- sidebar ---------- */
+function setNarrow(on) {
+  document.body.classList.toggle("narrow", on);
+  $("collapse").firstElementChild.textContent = on ? "»" : "«";
+  $("collapse").title = on ? "Expand the sidebar" : "Collapse the sidebar";
+  store.set("narrow", on ? "1" : "");
+}
+$("collapse").onclick = () => setNarrow(!document.body.classList.contains("narrow"));
+setNarrow(store.get("narrow") === "1");
+// The library's reader says when a book opens or closes; the sidebar steps aside while it's open.
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || e.source !== $("libFrame").contentWindow) return;
+  if (e.data?.type === "shelf-reader") document.body.classList.toggle("reading", !!e.data.open);
+});
+
+/* ---------- folder picker ---------- */
+let pickerTarget = null, pickerCurrent = null;
+async function pickerLoad(path) {
+  try {
+    const r = await api("/api/dirs?path=" + encodeURIComponent(path || ""));
+    pickerCurrent = r;
+    $("pickerPath").value = r.path;
+    $("pickerUp").disabled = !r.parent;
+    $("pickerShortcuts").innerHTML = r.shortcuts.map(s =>
+      `<button type="button" class="small" data-path="${esc(s.path)}">${esc(s.label)}</button>`).join("");
+    $("pickerList").innerHTML = r.dirs.length
+      ? r.dirs.map(d => `<li><button type="button" data-dir="${esc(d)}">📁 ${esc(d)}</button></li>`).join("")
+      : `<li class="empty">No subfolders.</li>`;
+    $("pickerInfo").textContent = r.files ? `${r.files} .zip/.cbz file(s) in this folder` : "No .zip/.cbz files directly in this folder";
+    say($("pickerMsg"), "");
+  } catch (e) { say($("pickerMsg"), e.message, true); }
+}
+function openPicker(target, start) {
+  pickerTarget = target;
+  $("pickerTitle").textContent = target === "convert" ? "Choose a folder to convert" : "Choose where to save downloads";
+  $("picker").showModal();
+  pickerLoad(start || store.get("lastDir", ""));
+}
+$("pickerShortcuts").onclick = ev => { const b = ev.target.closest("button[data-path]"); if (b) pickerLoad(b.dataset.path); };
+$("pickerList").onclick = ev => {
+  const b = ev.target.closest("button[data-dir]");
+  if (b && pickerCurrent) pickerLoad(pickerCurrent.path.replace(/\/$/, "") + "/" + b.dataset.dir);
+};
+$("pickerUp").onclick = () => pickerCurrent?.parent && pickerLoad(pickerCurrent.parent);
+$("pickerGo").onsubmit = ev => { ev.preventDefault(); pickerLoad($("pickerPath").value); };
+$("pickerCancel").onclick = () => $("picker").close();
+$("pickerUse").onclick = () => {
+  if (!pickerCurrent) return;
+  const p = pickerCurrent.path;
+  store.set("lastDir", p);
+  if (pickerTarget === "convert") {
+    const lines = $("paths").value.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!lines.includes(p)) lines.push(p);
+    $("paths").value = lines.join("\n");
+  } else {
+    $("dest").value = p; if (!activePreset) store.set("dest", p); savePref({ download_dir: p });
+  }
+  $("picker").close();
+};
+$("browseConvert").onclick = () => {
+  const lines = $("paths").value.split("\n").map(s => s.trim()).filter(Boolean);
+  openPicker("convert", lines[lines.length - 1]);
+};
+$("browseDest").onclick = () => openPicker("download", $("dest").value.trim());
+
+/* ---------- rendering ---------- */
+function counts(jobs) { const c = {}; for (const j of jobs) c[j.state] = (c[j.state] || 0) + 1; return c; }
+function chipsFor(c) {
+  return ["queued","running","done","skipped","failed","cancelled"].filter(k => c[k]).map(k => `<span class="chip">${k} <b>${c[k]}</b></span>`);
+}
+function actionBtn(j) {
+  return (j.state === "queued" || j.state === "running") ? `<button class="link" data-act="cancel" data-id="${j.id}">Cancel</button>`
+       : (j.state === "failed" || j.state === "cancelled") ? `<button class="link" data-act="retry" data-id="${j.id}">Retry</button>` : "";
+}
+
+// The poll redraws every second; an element is rewritten only when its HTML changed, so text
+// can be selected, links hovered and buttons clicked between polls.
+const drawn = new Map();
+function setHTML(el, html) { if (drawn.get(el) !== html) { drawn.set(el, html); el.innerHTML = html; } }
+function setText(el, text) { text = String(text); if (el.textContent !== text) el.textContent = text; }
+
+/* @parts:script */
+/* ---------- history ---------- */
+const HIST_PAGE = 50;
+const hist = { cv: { items: [], total: 0, seen: null }, dl: { items: [], total: 0, seen: null } };
+function when(t) { return t ? new Date(t * 1000).toLocaleString() : "–"; }
+async function loadHistory(k, more = false) {
+  const box = $(k + "Hist"), h = hist[k];
+  if (!box.open) return;
+  const q = new URLSearchParams({ kind: box.dataset.kind, limit: HIST_PAGE, offset: more ? h.items.length : 0 });
+  if ($(k + "HistState").value) q.set("state", $(k + "HistState").value);
+  if ($(k + "HistAll").checked) q.set("all", "1");
+  try {
+    const r = await api("/api/history/list?" + q);
+    h.items = more ? h.items.concat(r.items) : r.items; h.total = r.total;
+    say($(k + "HistMsg"), "");
+  } catch (e) { return say($(k + "HistMsg"), e.message, true); }
+  const conv = k === "cv";
+  $(k + "HistRows").innerHTML = h.items.map(j => {
+    const size = conv ? (j.bytes_out ? `${fmt(j.bytes_in)} → ${fmt(j.bytes_out)}` : fmt(j.bytes_in)) : fmt(j.bytes_in);
+    const where = conv ? j.source.slice(0, j.source.length - j.name.length) : j.source;
+    return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(where)}</div>${j.output && j.output !== j.source ? `<div class="dir">→ ${esc(j.output)}</div>` : ""}</td>
+      <td><span class="state s-${j.state}">${j.state}</span><div class="note">${esc(j.message)}</div></td>
+      <td class="size">${size}</td><td class="note">${esc(when(j.finished_at))}</td></tr>`;
+  }).join("") || `<tr><td colspan="4" class="empty">Nothing here yet.</td></tr>`;
+  $(k + "HistStats").innerHTML = `<span class="chip">${h.total} job${h.total === 1 ? "" : "s"}</span>`;
+  const more_ = h.items.length < h.total;
+  let wrap = box.querySelector(".more");
+  if (!wrap) { wrap = document.createElement("div"); wrap.className = "more"; box.appendChild(wrap); }
+  wrap.innerHTML = more_ ? `<button data-hist-more="${k}">Show more (${h.total - h.items.length} left)</button>` : "";
+}
+for (const k of ["cv", "dl"]) {
+  $(k + "Hist").addEventListener("toggle", () => loadHistory(k));
+  $(k + "HistRefresh").onclick = () => loadHistory(k);
+  $(k + "HistState").onchange = () => loadHistory(k);
+  $(k + "HistAll").onchange = () => loadHistory(k);
+  $(k + "Hist").addEventListener("click", e => { if (e.target.closest("[data-hist-more]")) loadHistory(k, true); });
+}
+// An open history reloads when one of the queue's jobs finishes.
+function historyTick(st) {
+  for (const [k, jobs] of [["cv", st.jobs], ["dl", st.downloads]]) {
+    const done = (jobs || []).filter(j => !["queued", "running"].includes(j.state)).map(j => `${j.id}:${j.finished_at}`).join(",");
+    if (hist[k].seen !== null && done !== hist[k].seen) loadHistory(k);
+    hist[k].seen = done;
+  }
+  for (const el of document.querySelectorAll(".hist .seeall")) el.hidden = perms === null || !has("jobs.see_all");
+}
+
+let gamesOn = false;  // the Games tab is on (HARBOR_GAMES): rpgm-shelf's state keys are there
+function render(st) {
+  accountsOn = "account" in st;
+  if (gamesOn !== ("games_can" in st)) { gamesOn = "games_can" in st; $("tab-games").hidden = !TAB_NEEDS.games(); }
+  if (!defaultsSet) {
+    $("qr").value = $("qn").value = st.defaults.quality;
+    $("method").value = st.defaults.method ?? 4;
+    applyHarborDefaults(st.harbor);
+    defaultsSet = true;
+    convertNote();
+  }
+  renderPresets(accountsOn ? st.harbor?.download_presets || [] : storedPresets());
+  renderConvert(st);
+  renderDownloads(st);
+  historyTick(st);
+  renderAccount(st.account);
+  applyPerms(st.account ? st.account.perms : accountsOn ? GUEST_PERMS : null);
+  renderAdmin(st);
+  document.body.classList.remove("loading");
+}
+
+/* ---------- account ---------- */
+let account = null;
+function renderAccount(a) {
+  $("acct").hidden = !a;
+  $("signInBox").hidden = !(accountsOn && !a);
+  if (!a) return;
+  if (JSON.stringify(a) === JSON.stringify(account)) return;
+  account = a;
+  $("acctName").textContent = a.name;
+  $("acctBtn").title = `Signed in as ${a.name}${a.admin ? " (admin)" : ""}`;
+  $("acctTitle").textContent = `Account: ${a.name}`;
+  $("pwUser").value = a.name;
+  $("tokenList").innerHTML = a.tokens.length ? a.tokens.map(t => `<li><span>${esc(t.label)} <span class="note">· ${t.scope === "reader" ? "reader app" : "Chrome extension"}</span><br><span class="note">created ${new Date(t.created_at * 1000).toLocaleDateString()}${t.last_used ? `, last used ${new Date(t.last_used * 1000).toLocaleDateString()}` : ", not used yet"}</span></span>
+    <button class="small" data-revoke="${t.id}">Revoke</button></li>`).join("") : `<li class="note">No tokens.</li>`;
+  const sites = a.site_keys;
+  $("authAuto").hidden = sites === null;
+  if (sites === null && $("authMode").value === "auto") { $("authMode").value = "bearer"; authUI(); }
+  if (sites !== null) {
+    const how = { bearer: "Bearer", header: "header", query: "query parameter" };
+    $("siteKeyList").innerHTML = sites.length ? sites.map(k => `<li><span>${esc(k.label)} <span class="note mono">${esc(k.host + k.path)}</span><br>
+      <span class="note">${how[k.mode]}${k.name ? " " + esc(k.name) : ""} · saved ${new Date(k.updated_at * 1000).toLocaleDateString()}${k.readable ? "" : ' · <b style="color:var(--bad)">can\'t be read: enter it again</b>'}</span></span>
+      <span class="actions"><button class="small" data-sk-edit="${k.id}">Edit</button><button class="small" data-sk-rm="${k.id}">Remove</button></span></li>`).join("") : `<li class="note">No saved keys.</li>`;
+  }
+}
+// Saved site keys: add, edit (the secret is entered again or left empty to keep it), remove.
+let skEditing = null;
+function skModeUI() {
+  const m = $("skMode").value;
+  $("skName").hidden = m === "bearer";
+  $("skName").placeholder = m === "query" ? "api_key" : "X-API-Key";
+}
+function skReset() {
+  skEditing = null;
+  $("siteKeyForm").reset(); skModeUI();
+  $("skSecret").placeholder = "Key or token";
+  $("skCancel").hidden = true;
+}
+$("skMode").onchange = skModeUI;
+$("skCancel").onclick = () => { skReset(); say($("skMsg"), ""); };
+$("siteKeyForm").onsubmit = async e => {
+  e.preventDefault();
+  const body = { label: $("skLabel").value.trim(), host: $("skHost").value.trim(), path: $("skPath").value.trim(),
+    mode: $("skMode").value, name: $("skName").value.trim(), secret: $("skSecret").value };
+  if (skEditing !== null) body.id = skEditing;
+  try {
+    await api("/api/account/site-key-set", body);
+    say($("skMsg"), `Saved “${body.label}”.`);
+    skReset();
+    refresh();
+  } catch (err) { say($("skMsg"), err.message, true); }
+};
+$("siteKeyList").onclick = async e => {
+  const ed = e.target.closest("[data-sk-edit]"), rm = e.target.closest("[data-sk-rm]");
+  const k = (account?.site_keys || []).find(x => x.id === +(ed || rm)?.dataset[ed ? "skEdit" : "skRm"]);
+  if (!k) return;
+  if (ed) {
+    skEditing = k.id;
+    $("skLabel").value = k.label; $("skHost").value = k.host; $("skPath").value = k.path;
+    $("skMode").value = k.mode; $("skName").value = k.name; $("skSecret").value = ""; skModeUI();
+    $("skSecret").placeholder = "Leave empty to keep the saved key";
+    $("skCancel").hidden = false;
+    $("skLabel").focus();
+  } else if (confirm(`Remove the saved key “${k.label}”?`)) {
+    try { await api("/api/account/site-key-remove", { id: k.id }); say($("skMsg"), `Removed “${k.label}”.`); refresh(); }
+    catch (err) { say($("skMsg"), err.message, true); }
+  }
+};
+// One sub-tab per section, like the Admin tab; the last one opened is remembered.
+const ACCOUNT_SECTIONS = [
+  ["password", "acctPwBox", "Password"],
+  ["defaults", "acctPrefsBox", "Defaults"],
+  ["sites", "acctSitesBox", "Sites"],
+  ["sessions", "acctSessionsBox", "Sessions"],
+  ["tokens", "acctTokensBox", "Tokens"],
+];
+let acctTab = store.get("accountTab", "password");
+function showAccountTab(key) {
+  const offered = ACCOUNT_SECTIONS.filter(([k]) => k !== "sites" || (account && account.site_keys !== null));
+  if (!offered.some(([k]) => k === key)) key = "password";
+  acctTab = key;
+  store.set("accountTab", key);
+  setHTML($("acctTabs"), offered.map(([k, , label]) =>
+    `<button role="tab" data-acct="${k}" aria-selected="${k === key}">${label}</button>`).join(""));
+  for (const [k, box] of ACCOUNT_SECTIONS) $(box).hidden = k !== key;
+  if (key === "sessions") loadSessions();
+}
+$("acctTabs").onclick = e => { const b = e.target.closest("[data-acct]"); if (b) showAccountTab(b.dataset.acct); };
+$("acctBtn").onclick = () => {
+  say($("pwMsg"), ""); say($("prefsMsg"), ""); say($("tokenMsg"), ""); say($("sessionMsg"), ""); say($("skMsg"), ""); $("tokenShow").hidden = true;
+  showAccountTab(acctTab);
+  $("acctDlg").showModal();
+};
+// A short description of a browser from its User-Agent, such as "Chrome on Windows".
+function browserName(ua) {
+  if (!ua) return "Unknown browser";
+  const b = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "A browser";
+  const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS"
+    : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? `${b} on ${os}` : b;
+}
+async function loadSessions() {
+  try {
+    const list = await api("/api/account/sessions");
+    $("sessionList").innerHTML = list.map(x => `<li><span title="${esc(x.user_agent)}">${esc(browserName(x.user_agent))}${x.current ? ' <span class="note">(this browser)</span>' : ""}<br>
+      <span class="note">signed in ${new Date(x.created_at * 1000).toLocaleString()}, last used ${new Date(x.last_seen * 1000).toLocaleString()}</span></span>
+      ${x.current ? "" : `<button class="small" data-session="${esc(x.id)}">Sign out</button>`}</li>`).join("") || `<li class="note">No sessions.</li>`;
+  } catch (e) { say($("sessionMsg"), e.message, true); }
+}
+$("sessionList").onclick = async e => {
+  const b = e.target.closest("[data-session]");
+  if (!b) return;
+  try { await api("/api/account/session-revoke", { id: b.dataset.session }); say($("sessionMsg"), "Signed out."); loadSessions(); }
+  catch (err) { say($("sessionMsg"), err.message, true); }
+};
+// Sign in: a dialog over the page. /login (the server's redirect target, and where the Library
+// frame goes on a 401) sends here with ?signin, and next= when it came from another page.
+function signInNext() {
+  const n = new URLSearchParams(location.search).get("next") || "/";
+  return n.startsWith("/") && !n.startsWith("//") ? n : "/";  // only this site
+}
+async function openSignIn(why) {
+  if ($("signInDlg").open) return;
+  $("siWhy").textContent = why || "Sign in to convert, download and keep your favourites and reading progress.";
+  say($("siMsg"), "");
+  let accounts = true;
+  try { accounts = (await fetch("/api/account/status").then(r => r.json())).accounts; } catch {}
+  $("siForm").hidden = !accounts;
+  $("siSetup").hidden = accounts;
+  for (const d of document.querySelectorAll("dialog[open]")) d.close();
+  $("signInDlg").showModal();
+  if (accounts) $("siName").focus();
+}
+$("signIn").onclick = () => openSignIn();
+$("siClose").onclick = () => $("signInDlg").close();
+$("signInDlg").addEventListener("close", () => {
+  if (new URLSearchParams(location.search).has("signin")) history.replaceState(null, "", "/");
+});
+$("siForm").onsubmit = async e => {
+  e.preventDefault();
+  $("siGo").disabled = true;
+  say($("siMsg"), "");
+  try {
+    const r = await fetch("/api/account/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("siName").value, password: $("siPassword").value }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    location.replace(signInNext());
+  } catch (err) {
+    say($("siMsg"), err.message, true);
+    $("siPassword").select();
+  } finally { $("siGo").disabled = false; }
+};
+if (new URLSearchParams(location.search).has("signin")) openSignIn();
+$("acctClose").onclick = () => $("acctDlg").close();
+$("pwForm").onsubmit = async e => {
+  e.preventDefault();
+  if ($("pwNew").value !== $("pwNew2").value) return say($("pwMsg"), "The new passwords don't match.", true);
+  try {
+    await api("/api/account/password", { current: $("pwCur").value, new: $("pwNew").value });
+    for (const id of ["pwCur", "pwNew", "pwNew2"]) $(id).value = "";
+    say($("pwMsg"), "Password changed. Other browsers were signed out.");
+  } catch (err) { say($("pwMsg"), err.message, true); }
+};
+$("tokenNew").onclick = async () => {
+  try {
+    const t = await api("/api/account/token-create", { label: $("tokenLabel").value, scope: $("tokenScope").value });
+    $("tokenValue").textContent = t.token;
+    $("tokenShow").hidden = false;
+    $("tokenReaderHow").hidden = t.scope !== "reader";
+    $("opdsUrl").textContent = location.origin + "/api/library/opds";
+    $("opdsUser").textContent = account?.name || "";
+    $("tokenLabel").value = "";
+    say($("tokenMsg"), "");
+    refresh();
+  } catch (err) { say($("tokenMsg"), err.message, true); }
+};
+$("tokenCopy").onclick = () => navigator.clipboard?.writeText($("tokenValue").textContent).then(() => say($("tokenMsg"), "Copied."), () => {});
+$("tokenList").onclick = async e => {
+  const b = e.target.closest("[data-revoke]");
+  if (!b || !confirm("Revoke this token? The extension using it stops working until it gets a new one.")) return;
+  try { await api("/api/account/token-revoke", { id: +b.dataset.revoke }); refresh(); } catch (err) { say($("tokenMsg"), err.message, true); }
+};
+$("prefsReset").onclick = async () => {
+  const changes = Object.fromEntries(["quality", "method", "delete_original", "download_dir", "auth_mode", "auth_name", "convert_downloads"].map(k => [k, null]));
+  try {
+    await api("/api/account/prefs", { changes });
+    defaultsSet = false;  // fill the fields again from harbor's defaults
+    await refresh();
+    say($("prefsMsg"), "Back to harbor's defaults.");
+  } catch (e) { say($("prefsMsg"), e.message, true); }
+};
+$("signOut").onclick = async () => {
+  try { await api("/api/account/logout", {}); } catch {}
+  location.replace("/");  // back to the home page, as a guest
+};
+
+/* ---------- polling ---------- */
+// One timer, one request at a time. Every second while the Convert or Download tab is in view;
+// every 5 seconds on the Library or Admin tab (their actions refresh at once) or in a hidden tab.
+// refresh() during a request (an action handler) asks for one more poll right after it, and its
+// promise settles once that poll is drawn, so "await refresh()" sees the action's result.
+let pollTimer = 0, polling = null, pollAgain = null;
+function pollDelay() {
+  const tab = document.querySelector('.tab[aria-selected="true"]')?.dataset.tab;
+  return document.hidden || !["convert", "download"].includes(tab) ? 5000 : 1000;
+}
+function refresh() {
+  if (polling) return pollAgain ||= polling.then(() => { pollAgain = null; return refresh(); });
+  clearTimeout(pollTimer);
+  polling = (async () => {
+    try { render(await api("/api/state")); }  // a 401 opens the sign-in dialog (api())
+    catch (e) { say($("msg"), "Lost connection to the server: " + e.message, true); }
+  })().finally(() => {
+    polling = null;
+    if (!pollAgain) { clearTimeout(pollTimer); pollTimer = setTimeout(refresh, pollDelay()); }
+  });
+  return polling;
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+for (const t of document.querySelectorAll(".tab"))
+  t.addEventListener("click", () => { if (["convert", "download"].includes(t.dataset.tab)) refresh(); });
+refresh();
+</script>
+</body>
+</html>

@@ -36,12 +36,13 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
 | `ecosystem.config.cjs` | pm2 config that keeps harbor running |
-| `harbor/ui.html` | The two-tab page: one file, CSS and JS inline (including the logo and favicon), no external requests |
+| `harbor/ui/` | The page, in parts: `shell.html` (head, shared CSS, sidebar, the Account, sign-in and folder-picker dialogs, the shared JS: `api`, `showTab`, `applyPerms`, history, `render`, polling) and one file per tab (`convert`, `download`, `library`, `games`, `admin`.html) with its `@style`, `@tab`, `@pane`, `@dialog` and `@script` sections. Served as one page, CSS and JS inline (including the logo and favicon), no external requests |
+| `harbor/page.py` | `build()` joins `ui/` into that one page (each part's sections at the shell's `@parts:` lines, in `PARTS` order) when `harbor.app` is imported. `tests/test_page.py` |
 | `assets/logo.svg` | The logo. The page inlines it twice (header and favicon data URI); `LogoTests` checks they match |
 | `.env.example` | Every setting, commented. Real `.env` files are git-ignored |
 | `harbor/cli.py` | `harbor ui`, and `harbor user add/passwd/list/disable/enable/remove` |
 | `bin/harbor` | Runs the CLI from a checkout |
-| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `test_library_tab.py` (library mounted, conversions landing in it), `test_history.py`, `test_maint.py` (backup, doctor), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
+| `tests/` | `test_harbor.py` (hand-off, console, CLI, shared-code check), `test_config.py` (settings, `.env` key, logo), `test_page.py` (the page joined from `harbor/ui/`), `test_state.py` (saved jobs), `test_extension.py` (manifest, ID, allowed origin), `test_library_tab.py` (library mounted, conversions landing in it), `test_history.py`, `test_maint.py` (backup, doctor), `helpers.py` (archive builders and `FileServer`, copied from the two tools' tests) |
 | `ci/release_notes.py`, `.github/workflows/` | Release gate, CI and release pipelines, as in the other two repos |
 
 ## Where a change belongs
@@ -50,7 +51,8 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
   1. Make it there, with its tests.
   2. Release it there (tag `v<version>`).
   3. Bump the tag in this repo's `pyproject.toml`.
-- **The page is harbor's own.** It is the union of the two tools' pages: the Convert tab is `cbzwebp/ui.html`'s body and the Download tab is `dlqueue/ui.html`'s, plus the tabs and the "Convert downloads" option. When either tool's page changes, carry the change over here by hand.
+- **The page is harbor's own.** It is the union of the two tools' pages: the Convert tab (`harbor/ui/convert.html`) is `cbzwebp/ui.html`'s body and the Download tab (`harbor/ui/download.html`) is `dlqueue/ui.html`'s, plus the tabs and the "Convert downloads" option. When either tool's page changes, carry the change over here by hand.
+- **Where page code goes.** What only one tab uses goes in its file under `harbor/ui/`; what several use (shared CSS pieces, dialogs, helpers) goes in `shell.html`. `page.build` puts every part's `@script` at the shell's `@parts:script` line, so the page is still one script: a tab's top-level code runs before the shell's history, `render`, account and polling sections, and may only call into them from handlers, never at load. A new tab is a new file plus its name in `page.PARTS`.
 - **The page's JS reads these `/api/state` keys:** `jobs`, `paused`, `workers`, `image_threads`, `defaults` (from `ConvertAPI`), `downloads`, `downloads_paused`, `download_workers`, `download_rate`, `download_fair`, `download_hours`, `download_waiting`, `download_lanes` (from `DownloadAPI`), `history_saved` (`HistoryAPI`), and in the Library frame `library`, `library_list`, `library_can`, `library_prefs` (cbz-shelf), and in the Games frame `games`, `games_roots`, `games_can` (rpgm-shelf; only with `HARBOR_GAMES`, and the page shows the Games tab only when `games_can` is there). `test_page_and_merged_state` pins them. A download sends its convert options as `after: {convert, quality, delete_original}`, which `check_after` validates; `linked_id` on a download is its convert job's id.
 
 ## The rules of the two tools still apply
@@ -169,7 +171,7 @@ To test against local checkouts of the two tools instead of the pinned tags: `pi
 - **The console stays local and guarded.** The guards live in the shared `serve` from cbz-webp. Don't add a handler here; add an action to an API object in the right tool instead.
 - **Reaching harbor from other devices** goes through `config.check_reach`, which `cli.cmd_ui` and `harbor doctor` both run: anything but a loopback `HARBOR_HOST`, or `HARBOR_TRUST_PROXY`, needs HTTPS (harbor's own certificate, or a proxy on this machine), `HARBOR_SECURE_COOKIE`, accounts, and `HARBOR_ALLOWED_HOSTS`. Never weaken a rule there without the user asking; add a case to `tests/test_reach.py` for any change. The shared server only trusts `X-Forwarded-*` from loopback connections. The Chrome extension stays on localhost: with harbor's own HTTPS, `HARBOR_LOCAL_PORT` opens a second, plain-HTTP server on 127.0.0.1 only (`server.local_server`, same APIs and checks, started and stopped by `cli.cmd_ui`). It never binds anything but 127.0.0.1. Test HTTPS against a throwaway certificate made with `openssl` in a temp folder, never the user's.
 - **The page must work offline and in dark mode.** `render()` rewrites only stats and table bodies every second; keep forms and the folder-picker `<dialog>` outside those.
-- **To change the logo**, edit `assets/logo.svg`, then replace the inline `<svg>` in the page's `<h1>` and the favicon `href` (URL-encoded) with it. `LogoTests` fails until all three match.
+- **To change the logo**, edit `assets/logo.svg`, then replace the inline `<svg>` in the page's `<h1>` (`harbor/ui/shell.html`) and the favicon `href` (URL-encoded) with it. `LogoTests` fails until all three match.
 
 ## Releasing
 

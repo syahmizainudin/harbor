@@ -16,6 +16,7 @@ from urllib.parse import unquote
 from helpers import FileServer
 
 from harbor import cli
+from harbor import page as page_module
 from harbor.app import build, serve_harbor
 from harbor.config import ConfigError, Settings, find_env_file, load_settings, parse_env, xdg_path
 
@@ -275,7 +276,7 @@ class EnvKeyConsoleTests(unittest.TestCase):
 class LogoTests(unittest.TestCase):
     def test_page_uses_assets_logo(self):
         logo = (ROOT / "assets" / "logo.svg").read_text().strip()
-        page = (ROOT / "harbor" / "ui.html").read_text()
+        page = page_module.build().decode()
         self.assertIn(logo, page, "inline header logo differs from assets/logo.svg")
         icon = re.search(r'<link rel="icon" href="data:image/svg\+xml,([^"]+)">', page)
         self.assertIsNotNone(icon)

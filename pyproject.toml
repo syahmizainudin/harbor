@@ -25,7 +25,7 @@ harbor = "harbor.cli:main"
 packages = ["harbor"]
 
 [tool.setuptools.package-data]
-harbor = ["ui.html", "login.html"]
+harbor = ["ui/*.html", "login.html"]
 
 [tool.setuptools.dynamic]
 version = { attr = "harbor.__version__" }

@@ -2,6 +2,10 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
+## Unreleased
+
+- **The page is split by tab** (no change in the browser): `harbor/ui.html` is now `harbor/ui/shell.html` plus one file per tab (Convert, Download, Library, Games, Admin), joined into the same single page by `harbor/page.py` when harbor starts. The first step toward a front-end build and harbor as a core with modules.
+
 ## 0.2.9
 
 Pins cbz-webp 0.5.1, dl-queue 0.6.2, cbz-shelf 0.6.0 and rpgm-shelf 0.1.1 (new).

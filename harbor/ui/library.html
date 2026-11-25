@@ -1,0 +1,13 @@
+<!-- The Library tab: cbz-shelf's page at /library, framed. harbor/page.py joins this file into harbor/ui/shell.html; see the notes there. -->
+<!-- @style -->
+<style>
+  #pane-library { height: 100%; }
+  #libFrame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
+</style>
+<!-- @tab -->
+    <button class="tab" role="tab" id="tab-library" aria-controls="pane-library" data-tab="library" title="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 15M3 20h18"/></svg><span class="txt">Library</span></button>
+<!-- @pane -->
+  <!-- ===================== Library (cbz-shelf, framed) ===================== -->
+  <div id="pane-library" role="tabpanel" aria-labelledby="tab-library" hidden>
+    <iframe id="libFrame" title="Library" allow="fullscreen"></iframe>
+  </div>

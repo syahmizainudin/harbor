@@ -23,10 +23,10 @@ from cbzwebp.web import ConvertAPI, serve
 from dlqueue.download import Download, DownloadQueue, Lane, parse_hours
 from dlqueue.web import DownloadAPI
 
-from . import __version__
+from . import __version__, page
 from .config import Settings, xdg_path
 
-UI_HTML = (Path(__file__).parent / "ui.html").read_bytes()
+UI_HTML = page.build()
 LOGIN_HTML = (Path(__file__).parent / "login.html").read_bytes()
 
 

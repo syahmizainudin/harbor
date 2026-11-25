@@ -2,13 +2,13 @@
 
 How harbor looks and how a request flows. New features, and later modules, follow it. The rules that keep files and secrets safe live in `AGENTS.md`; this file links to them rather than repeating them.
 
-The four pages (harbor's `ui.html`, and the pages of cbz-webp, dl-queue and cbz-shelf) share these colours and pieces. A change here is made in all four.
+The four pages (harbor's, built from `harbor/ui/`, and the pages of cbz-webp, dl-queue and cbz-shelf) share these colours and pieces. A change here is made in all four.
 
 ## Front end
 
 ### Ground rules
 
-- **One file per page, no build step, no CDN.** CSS and JS are inline, and the page works offline.
+- **One served file per page, no CDN.** CSS and JS are inline, and the page works offline. Harbor's page is written as parts in `harbor/ui/` (the shell, and one file per tab) and joined into that one file by `harbor/page.py`, with no build tools; see `AGENTS.md`, "Where page code goes". The tools' pages are one file each.
 - **Dark mode comes from the colour tokens.** Never write a colour outside `:root`; use `var(--…)`. Every new piece is checked in both themes.
 - **System font:** `14px/1.45 system-ui`. Monospace (`.mono`, 13px) for paths, URLs, tokens and code.
 - **Redraw only what changes.** `render()` runs every poll. It rewrites stats and table bodies through `setHTML`/`setText`, which skip unchanged content. Forms, dialogs and anything holding focus stay outside what it rewrites.

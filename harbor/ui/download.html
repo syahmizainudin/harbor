@@ -1,0 +1,341 @@
+<!-- The Download tab: dl-queue's queue, its presets and lanes. harbor/page.py joins this file into harbor/ui/shell.html; see the notes there. -->
+<!-- @tab -->
+    <button class="tab" role="tab" id="tab-download" aria-controls="pane-download" data-tab="download" title="Download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span class="txt">Download</span><span class="badge" id="badge-download"></span></button>
+<!-- @pane -->
+  <!-- ===================== Download ===================== -->
+  <div id="pane-download" role="tabpanel" aria-labelledby="tab-download" hidden><div class="pane-inner">
+    <section class="panel">
+      <label for="urls">File URLs (one per line; <span class="mono">{1..20}</span> in a URL makes one URL per number)</label>
+      <textarea id="urls" placeholder="https://example.com/files/Chapter%2001.zip"></textarea>
+
+      <div class="row" id="presetRow">
+        <label for="preset" style="margin:0">Preset</label>
+        <select id="preset" title="Fill in the folder, API key mode and convert settings from a saved set"><option value="">None</option></select>
+        <button class="small" id="presetSave" type="button">Save as preset…</button>
+        <button class="small" id="presetDelete" type="button" hidden>Delete</button>
+        <span id="laneBox" hidden><label for="dlLane" style="margin:0 6px 0 0;display:inline">Lane</label><select id="dlLane" title="Download lanes have their own downloads at once, speed limit and hours (set on the Admin page)"><option value="">Default</option></select></span>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="dest">Save to folder</label>
+          <div class="field">
+            <input type="text" id="dest" class="mono" placeholder="/mnt/d/Downloads/Comics">
+            <button class="small" id="browseDest" type="button">Open folder…</button>
+          </div>
+        </div>
+        <div>
+          <label for="authMode">API key sent as</label>
+          <div class="field">
+            <select id="authMode">
+              <option value="bearer">Authorization: Bearer &lt;key&gt;</option>
+              <option value="header">Custom header</option>
+              <option value="query">Query parameter</option>
+              <option value="none">No API key</option>
+              <option value="auto" id="authAuto" hidden>Saved site key (automatic)</option>
+            </select>
+            <input type="text" id="authName" class="mono" placeholder="X-API-Key" hidden aria-label="Header or parameter name">
+          </div>
+        </div>
+      </div>
+
+      <div class="grid" id="keyRow">
+        <div>
+          <label for="apiKey">API key</label>
+          <div class="field">
+            <input type="password" id="apiKey" class="mono" autocomplete="off" spellcheck="false">
+            <button class="small" id="showKey" type="button">Show</button>
+          </div>
+          <label class="check" style="margin-top:6px"><input type="checkbox" id="rememberKey"> Remember the key in this browser</label>
+          <div class="note" id="envKeyNote" hidden style="margin-top:6px">Harbor has an API key from its .env file. Leave the field empty to use it, or type a key to use that one instead.</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" id="dlConvert" checked> Convert .zip / .cbz downloads to WebP .cbz</label>
+        <span class="note" id="dlConvertNote"></span>
+        <button class="primary" id="dlAdd">Add to queue</button>
+      </div>
+      <div class="msg" id="dlMsg"></div>
+    </section>
+
+    <section class="panel">
+      <div class="bar-head">
+        <div class="stats" id="dlStats"></div>
+        <div class="actions">
+          <button id="dlPause">Pause</button>
+          <button id="dlCancelAll">Cancel all</button>
+          <button id="dlClear">Clear finished</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>File</th><th>State</th><th>Size</th><th>Details</th><th></th></tr></thead>
+        <tbody id="dlRows"><tr><td colspan="5" class="empty">No downloads yet.</td></tr></tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <details class="hist" id="dlHist" data-kind="download">
+        <summary><strong>History</strong> <span class="note">finished downloads, kept after Clear finished and restarts</span></summary>
+        <div class="bar-head" style="margin-top:8px">
+          <div class="stats" id="dlHistStats"></div>
+          <div class="actions">
+            <select id="dlHistState" aria-label="Show"><option value="">Everything</option><option value="done">Done</option><option value="failed">Failed</option><option value="skipped">Skipped</option><option value="cancelled">Cancelled</option></select>
+            <label class="check seeall" hidden><input type="checkbox" id="dlHistAll"> Everyone's</label>
+            <button id="dlHistRefresh">Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>File</th><th>Result</th><th>Size</th><th>Finished</th></tr></thead>
+          <tbody id="dlHistRows"></tbody>
+        </table>
+        <div class="msg" id="dlHistMsg"></div>
+      </details>
+    </section>
+  </div></div>
+<!-- @script -->
+<script>
+/* ---------- download form ---------- */
+$("dest").value = store.get("dest", "");
+$("authMode").value = store.get("authMode", "bearer");
+$("authName").value = store.get("authName", "");
+if (store.get("apiKey")) { $("apiKey").value = store.get("apiKey"); $("rememberKey").checked = true; }
+
+let envKey = false;
+// With accounts, these fields are your own defaults, saved with your account ("harbor" and "defaults"
+// in the state already carry them). Without accounts, this browser remembers them, as before.
+let accountsOn = false, prefTimer = null, pendingPrefs = {};
+// While a preset is chosen, the download fields hold the preset's values: they aren't your defaults.
+const DOWNLOAD_PREFS = ["download_dir", "auth_mode", "auth_name", "convert_downloads"];
+function savePref(changes) {
+  if (activePreset) changes = Object.fromEntries(Object.entries(changes).filter(([k]) => !DOWNLOAD_PREFS.includes(k)));
+  if (!accountsOn || !Object.keys(changes).length) return;
+  Object.assign(pendingPrefs, changes);
+  clearTimeout(prefTimer);
+  prefTimer = setTimeout(() => {
+    const body = { changes: pendingPrefs };
+    pendingPrefs = {};
+    api("/api/account/prefs", body).catch(e => say($("msg"), "Couldn't save your defaults: " + e.message, true));
+  }, 600);
+}
+function applyHarborDefaults(h) {
+  if (!h) return;
+  if (accountsOn) {
+    $("dest").value = h.download_dir || "";
+    $("authMode").value = h.auth_mode || "bearer";
+    $("authName").value = h.auth_name || "";
+    $("dlConvert").checked = h.convert_downloads !== false && has("convert");
+  } else {
+    // .env values fill fields this browser hasn't remembered its own value for.
+    if (store.get("dest") === null && h.download_dir) $("dest").value = h.download_dir;
+    if (store.get("authMode") === null && h.auth_mode) $("authMode").value = h.auth_mode;
+    if (store.get("authName") === null && h.auth_name) $("authName").value = h.auth_name;
+  }
+  $("del").checked = !!h.delete_original && has("delete_original");
+  envKey = !!h.has_key;
+  $("apiKey").placeholder = envKey ? "Using the key from .env" : "";
+  $("envKeyNote").hidden = !envKey;
+  authUI();
+  if (h.notes && h.notes.length) say($("msg"), h.notes.join(" · "), h.notes.some(n => n.startsWith("not restored")));
+}
+function authUI() {
+  const m = $("authMode").value;
+  $("authName").hidden = !(m === "header" || m === "query");
+  $("authName").placeholder = m === "query" ? "api_key" : "X-API-Key";
+  $("keyRow").hidden = m === "none" || m === "auto";
+}
+function saveKey() { store.set("apiKey", $("rememberKey").checked && $("apiKey").value ? $("apiKey").value : null); }
+function convertNote() {
+  const a = downloadAfter(), from = activePreset ? `preset “${activePreset.name}”` : "the Convert tab's settings";
+  $("dlConvertNote").textContent = $("dlConvert").checked
+    ? `Uses ${from}: quality ${a.quality || "–"}%, effort ${a.method}, ${a.delete_original ? "downloaded .zip deleted after verify" : "downloaded .zip kept"}.`
+    : "Files are only saved.";
+}
+// What happens after a download: the chosen preset's convert settings, else the Convert tab's.
+function downloadAfter() {
+  const p = activePreset || {};
+  return {
+    convert: $("dlConvert").checked,
+    quality: p.quality ?? parseInt($("qn").value, 10),
+    method: p.method ?? +$("method").value,
+    delete_original: (p.delete_original ?? $("del").checked) && has("delete_original"),
+  };
+}
+
+/* ---------- download presets ---------- */
+// Named sets of download settings: folder, API key mode and name, and what to do after (never the
+// API key). With accounts they're saved with your account, and the Chrome extension can pick them;
+// without, this browser keeps them. Picking one fills in the form for this download only: your
+// defaults don't change.
+let presets = [], presetsJson = null, activePreset = null;
+function storedPresets() { try { return JSON.parse(store.get("presets", "[]")) || []; } catch { return []; } }
+function renderPresets(list) {
+  const json = JSON.stringify(list);
+  if (json === presetsJson) return;
+  presetsJson = json; presets = list;
+  const keep = $("preset").value;
+  $("preset").innerHTML = `<option value="">None</option>` + list.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("");
+  $("preset").value = list.some(p => p.name === keep) ? keep : "";
+  if (!$("preset").value && activePreset) { activePreset = null; convertNote(); }
+  $("presetDelete").hidden = !$("preset").value;
+}
+$("preset").onchange = () => {
+  const p = presets.find(x => x.name === $("preset").value) || null;
+  activePreset = p;
+  $("presetDelete").hidden = !p;
+  if (p) {
+    if ("download_dir" in p) $("dest").value = p.download_dir;
+    if ("auth_mode" in p) $("authMode").value = p.auth_mode;
+    if ("auth_name" in p) $("authName").value = p.auth_name;
+    if ("convert" in p) $("dlConvert").checked = p.convert && has("convert");
+    const lanes = [...$("dlLane").options].map(o => o.value);
+    $("dlLane").value = lanes.includes(p.lane || "") ? p.lane || "" : "";
+    if (p.lane && !lanes.includes(p.lane)) say($("dlMsg"), `The preset's lane “${p.lane}” no longer exists: downloads use the default lane.`, true);
+    authUI();
+  }
+  convertNote();
+};
+async function savePresets(list, select) {
+  try {
+    if (accountsOn) await api("/api/account/prefs", { changes: { download_presets: list.length ? list : null } });
+    else store.set("presets", list.length ? JSON.stringify(list) : null);
+    renderPresets(list);
+    $("preset").value = select;
+    $("preset").onchange();
+    return true;
+  } catch (e) { say($("dlMsg"), "Couldn't save the presets: " + e.message, true); return false; }
+}
+$("presetSave").onclick = async () => {
+  const name = (prompt("Name for this preset (the API key is never saved in it):", $("preset").value) || "").trim();
+  if (!name) return;
+  if (name.length > 60) return say($("dlMsg"), "A preset name can be at most 60 characters.", true);
+  const same = presets.find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (same && !confirm(`Replace the preset “${same.name}”?`)) return;
+  if (!same && presets.length >= 20) return say($("dlMsg"), "You can keep up to 20 presets. Delete one first.", true);
+  const a = downloadAfter();
+  const p = { name, download_dir: $("dest").value.trim(), auth_mode: $("authMode").value, auth_name: $("authName").value.trim(), convert: a.convert, method: a.method, delete_original: a.delete_original };
+  if ($("dlLane").value) p.lane = $("dlLane").value;
+  if (a.quality >= 1 && a.quality <= 100) p.quality = a.quality;
+  const list = presets.filter(x => x !== same).concat(p).sort((x, y) => x.name.localeCompare(y.name));
+  if (await savePresets(list, name)) say($("dlMsg"), `Saved the preset “${name}”.`);
+};
+$("presetDelete").onclick = async () => {
+  const name = $("preset").value;
+  if (!name || !confirm(`Delete the preset “${name}”? Downloads already queued aren't affected.`)) return;
+  if (await savePresets(presets.filter(x => x.name !== name), "")) say($("dlMsg"), `Deleted the preset “${name}”.`);
+};
+$("authMode").onchange = () => { if (!activePreset) store.set("authMode", $("authMode").value); savePref({ auth_mode: $("authMode").value }); authUI(); };
+$("authName").oninput = () => { if (!activePreset) store.set("authName", $("authName").value.trim()); savePref({ auth_name: $("authName").value.trim() }); };
+$("dest").onchange = () => { if (!activePreset) store.set("dest", $("dest").value.trim()); savePref({ download_dir: $("dest").value.trim() }); };
+$("rememberKey").onchange = saveKey;
+$("apiKey").oninput = saveKey;
+$("showKey").onclick = () => {
+  const show = $("apiKey").type === "password";
+  $("apiKey").type = show ? "text" : "password";
+  $("showKey").textContent = show ? "Hide" : "Show";
+};
+$("dlConvert").onchange = () => { convertNote(); savePref({ convert_downloads: $("dlConvert").checked }); };
+authUI();
+
+$("dlAdd").onclick = async () => {
+  const urls = $("urls").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const dest = $("dest").value.trim();
+  const mode = $("authMode").value;
+  if (!urls.length) return say($("dlMsg"), "Enter at least one URL.", true);
+  if (!dest) return say($("dlMsg"), "Choose a folder to save to.", true);
+  if (mode !== "none" && mode !== "auto" && !$("apiKey").value && !envKey) return say($("dlMsg"), "Enter the API key, or choose “No API key”.", true);
+  if ((mode === "header" || mode === "query") && !$("authName").value.trim())
+    return say($("dlMsg"), `Enter the ${mode === "header" ? "header" : "parameter"} name.`, true);
+  try {
+    const r = await api("/api/download/add", {
+      urls, dest,
+      after: downloadAfter(),
+      auth: { mode, key: $("apiKey").value, name: $("authName").value.trim() },
+      lane: $("dlLane").value,
+    });
+    if (!activePreset) {  // a preset's folder is for this download, not the new default
+      store.set("dest", dest);
+      savePref({ download_dir: dest });
+    }
+    const have = r.in_library || [];
+    say($("dlMsg"), `Queued ${r.added} download(s)` + (r.duplicates ? `, ${r.duplicates} already in queue` : "") + "." +
+      (have.length ? ` Already in the library: ${have.slice(0, 3).map(b => `${b.book} (${b.file})`).join(", ")}${have.length > 3 ? ` and ${have.length - 3} more` : ""}.` : "") +
+      (r.key_note ? ` Note: ${r.key_note}.` : ""));
+    $("urls").value = "";
+    refresh();
+  } catch (e) { say($("dlMsg"), e.message, true); }
+};
+$("dlPause").onclick = async () => { await api("/api/download/pause", { paused: !dlPaused }); refresh(); };
+$("dlClear").onclick = async () => { await api("/api/download/clear", {}); refresh(); };
+$("dlCancelAll").onclick = async () => {
+  if (confirm("Cancel every queued and running download?")) { await api("/api/download/cancel-all", {}); refresh(); }
+};
+$("dlRows").onclick = async ev => {
+  const b = ev.target.closest("button[data-act]"); if (!b) return;
+  if (b.dataset.act === "goto") { showTab("convert"); return; }
+  await api("/api/download/" + b.dataset.act, { id: +b.dataset.id }); refresh();
+};
+
+let laneNames = null;
+function renderLanes(lanes) {
+  const names = JSON.stringify(lanes.map(l => l.name));
+  if (names === laneNames) return;
+  laneNames = names;
+  const keep = $("dlLane").value;
+  $("dlLane").innerHTML = `<option value="">Default</option>` + lanes.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join("");
+  $("dlLane").value = lanes.some(l => l.name === keep) ? keep : "";
+  $("laneBox").hidden = !lanes.length;
+}
+function renderDownloads(st) {
+  renderLanes(st.download_lanes || []);
+  dlPaused = st.downloads_paused;
+  $("dlPause").textContent = dlPaused ? "Resume" : "Pause";
+  const jobs = st.downloads, c = counts(jobs);
+  const got = jobs.filter(j => j.state === "done").reduce((s, j) => s + j.done, 0);
+  const chips = chipsFor(c);
+  if (got) chips.push(`<span class="chip">downloaded <b>${fmt(got)}</b></span>`);
+  chips.push(`<span class="chip">${st.download_workers} download(s) at a time${dlPaused ? " · <b>paused</b>" : ""}</span>`);
+  if (st.download_rate) chips.push(`<span class="chip">limit <b>${fmt(st.download_rate)}/s</b></span>`);
+  if (st.download_hours) chips.push(`<span class="chip" title="New downloads start only in these hours">${st.download_waiting ? `<b>waiting until ${esc(st.download_hours.split("-")[0])}</b>` : `hours ${esc(st.download_hours)}`}</span>`);
+  if (st.download_fair) chips.push(`<span class="chip" title="The next download comes from the site with the fewest running">taking turns between sites</span>`);
+  const lanePause = has("download.lanes");
+  for (const l of st.download_lanes || [])
+    chips.push(`<span class="chip" title="Lane: ${l.workers} at once${l.rate ? ", " + fmt(l.rate) + "/s" : ""}${l.hours ? ", hours " + esc(l.hours) : ""}">${esc(l.name)} <b>${l.running}/${l.workers}</b>${l.queued ? ` +${l.queued}` : ""}${l.paused ? " · <b>paused</b>" : l.waiting ? " · waiting" : ""}${lanePause ? `<button class="link" data-lane-pause="${esc(l.name)}" data-paused="${l.paused ? 1 : 0}">${l.paused ? "Resume" : "Pause"}</button>` : ""}</span>`);
+  setHTML($("dlStats"), chips.join(""));
+  setText($("badge-download"), (c.queued || 0) + (c.running || 0) || "");
+
+  if (!jobs.length) { setHTML($("dlRows"), `<tr><td colspan="5" class="empty">No downloads yet.</td></tr>`); return; }
+  const convById = Object.fromEntries(st.jobs.map(j => [j.id, j]));
+  setHTML($("dlRows"), jobs.map(j => {
+    let prog = "";
+    if (j.state === "running") {
+      prog = j.total
+        ? `<div class="prog"><i style="width:${Math.round(100 * j.done / j.total)}%"></i></div><span class="note">${Math.round(100 * j.done / j.total)}%</span>`
+        : `<div class="prog indet"><i></i></div>`;
+    }
+    const size = j.state === "running" ? `${fmt(j.done)}${j.total ? " / " + fmt(j.total) : ""}` : (j.done ? fmt(j.done) : "–");
+    let det = esc(j.message);
+    if (j.output) det += `<div class="note">${esc(j.output)}</div>`;
+    if (j.linked_id) {
+      const cj = convById[j.linked_id];
+      det += cj
+        ? `<div class="note">convert: <span class="state s-${cj.state}">${cj.state}</span> ${cj.state === "running" ? `${cj.done}/${cj.total}` : esc(cj.message)} <button class="link" data-act="goto">view</button></div>`
+        : `<div class="note">convert job cleared</div>`;
+    }
+    const auth = (j.auth_mode !== "none" ? ` <span class="note">· key: ${esc(j.auth_mode)}</span>` : "") +
+      (j.lane ? ` <span class="note">· lane: ${esc(j.lane)}</span>` : "");
+    return `<tr><td class="name">${esc(j.name)}<div class="dir">${esc(j.url)}</div><div class="dir">→ ${esc(j.dest_dir)}${auth}</div></td>
+      <td><span class="state s-${j.state}">${j.state}</span>${prog}</td>
+      <td class="size">${size}</td><td>${det}</td><td>${actionBtn(j)}</td></tr>`;
+  }).join(""));
+}
+
+// Pause or resume one lane: from its chip on the Download tab or its row here.
+async function toggleLane(b, msgEl) {
+  try {
+    await api("/api/download/lane-pause", { name: b.dataset.lanePause, paused: b.dataset.paused !== "1" });
+    refresh();
+  } catch (err) { say(msgEl, err.message, true); }
+}
+$("dlStats").addEventListener("click", e => { const b = e.target.closest("[data-lane-pause]"); if (b) toggleLane(b, $("dlMsg")); });
+
+</script>
