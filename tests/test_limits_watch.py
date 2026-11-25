@@ -59,9 +59,11 @@ class HarborUiTests(unittest.TestCase):
         self.dir = Path(self.tmp.name)
         self.inbox = self.dir / "inbox"
         self.inbox.mkdir()
-        with socket.socket() as s:
+        with socket.socket() as s, socket.socket() as g:
             s.bind(("127.0.0.1", 0))
+            g.bind(("127.0.0.1", 0))
             self.port = s.getsockname()[1]
+            games_port = g.getsockname()[1]
         env_file = self.dir / "x.env"
         env_file.write_text(
             "\n".join(
@@ -70,6 +72,8 @@ class HarborUiTests(unittest.TestCase):
                     "HARBOR_ACCOUNTS=false",
                     f"HARBOR_LIBRARY_DB={self.dir / 'lib.db'}",
                     f"HARBOR_HISTORY_DB={self.dir / 'hist.db'}",
+                    f"HARBOR_GAMES_DB={self.dir / 'games.db'}",
+                    f"HARBOR_GAMES_PORT={games_port}",  # not 8768, which the user's harbor may hold
                     f"HARBOR_STATE_FILE={self.dir / 'q.json'}",
                     f"HARBOR_WATCH_DIRS={self.inbox}",
                     "HARBOR_WATCH_POLL=5",

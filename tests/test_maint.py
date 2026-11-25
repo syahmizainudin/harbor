@@ -27,6 +27,7 @@ class Base(unittest.TestCase):
             accounts_db=str(self.dir / "harbor.db"),
             library_db=str(self.dir / "library.db"),
             history_db=str(self.dir / "history.db"),
+            games_db=str(self.dir / "games.db"),  # never the real ~/.local/share/harbor/games.db
             state_file=str(self.dir / "queue.json"),
             port=1,  # nothing listens there
         )
@@ -183,6 +184,7 @@ class CliTests(Base):
                     ("HARBOR_ACCOUNTS_DB", self.settings.accounts_db),
                     ("HARBOR_LIBRARY_DB", self.settings.library_db),
                     ("HARBOR_HISTORY_DB", self.settings.history_db),
+                    ("HARBOR_GAMES_DB", self.settings.games_db),
                     ("HARBOR_STATE_FILE", self.settings.state_file),
                     ("HARBOR_PORT", "1"),
                 )
