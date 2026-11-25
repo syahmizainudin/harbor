@@ -1,6 +1,6 @@
 # Plan: an RPG Maker MV/MZ library and player
 
-Status: phase 1 released 2026-11-23 (`rpgm-shelf` 0.1.0, public). Phase 2 (harbor's Games tab) released 2026-11-23 in harbor 0.2.9 with rpgm-shelf 0.1.1. Option A (a separate games server) was chosen in phase 0.
+Status: phase 1 released 2026-11-23 (`rpgm-shelf` 0.1.0, public). Phase 2 (harbor's Games tab) released 2026-11-23 in harbor 0.2.9 with rpgm-shelf 0.1.1. MZ released 2026-11-25 (`rpgm-shelf` 0.2.0, harbor 0.2.11). Option A (a separate games server) was chosen in phase 0.
 
 ## What was asked
 
@@ -57,7 +57,7 @@ No real game was available, so the prototype used a generated MV game: the MIT-l
 - **Save shim:** MV's `StorageManager` is synchronous, so the shim fetches all of the game's saves at boot, holds `Scene_Boot.isReady` until they arrive, re-runs `ConfigManager.load()`, then serves `load`/`exists` from memory and sends `save`/`remove` to the server in the background (`keepalive`). It replaces `isLocalMode`, `save`, `load`, `exists`, `remove`, `backup`, `cleanBackup`, `restoreBackup`. Saved: slot files and the global info (id 0); config is id -1.
 - **Confirmed:** harbor's session cookie reaches the games port on every request (same host, other port). A game's `fetch` to harbor with credentials is blocked by the browser (no CORS on harbor).
 - Headless key presses into a cross-origin frame are unreliable; tests drive the game through `frame.press` and the scenes' own handlers.
-- Still to check with a real game: encrypted assets, audio, plugins, a real font. **MZ is untested**: its web saves go through localforage (IndexedDB), so it needs its own shim. Test when a free MZ game is at hand.
+- Still to check with a real game: encrypted assets, audio, plugins, a real font. **MZ was untested** here: its web saves go through localforage (IndexedDB), so it needs its own shim (done, see MZ below).
 
 ### Phase 1: player over a folder (new tool, first release)
 
@@ -83,6 +83,15 @@ No real game was available, so the prototype used a generated MV game: the MIT-l
 
 **Phase 2 built 2026-11-23:** the Games tab framing `/games`, `GamesAPI(user_of=, can=)` with harbor's users and permissions (`games.play` given to Member by migration 11, `games.manage`), audit lines for folder changes, the games server started and stopped by `cli.cmd_ui` on `HARBOR_GAMES_PORT` (127.0.0.1 only), `HARBOR_GAMES`/`_DB`/`_SCAN`, doctor and backup covering `games.db`, and decision 4's cookie rule: harbor tries every `harbor_session` value, so a planted cookie can't hide the real one. Not done: remote play (needs the games server served through the proxy or `tailscale serve`, and `check_reach` rules).
 
+### MZ (done 2026-11-25, rpgm-shelf 0.2.0)
+
+Still no real MZ game, so it was built against the MZ 1.1.0 engine scripts from a GitHub mirror (not MIT like MV's corescript, so kept out of the repo; `make_game.py --mz` takes a path) and a generated MZ game.
+
+- **Where MZ differs:** `index.html` loads only `js/main.js`, which adds the engine's scripts, so the save script can't patch at load. `shim_mz.js` patches as soon as `rmmz_managers.js` has run, before `main.js` loads plugins (a plugin that replaces `StorageManager` still wins, as with MV).
+- **Saves:** MZ's `StorageManager` is promise-based and `Scene_Boot` already waits for `updateForageKeys()`, so that is where the saves are fetched. Only `saveZip`/`loadZip`/`exists`/`remove` change; the engine's JSON and zip steps stay. The zip is stored base64. Names map to the library's ids: `config` -1, `global` 0, `fileN` N + 1 (`file0` is MZ's autosave). A save the server refuses rejects, so the game shows its own "save failed".
+- **Checked in `tests/e2e`** with both engines: WebGL on, save and load through the server with a new token, nothing in IndexedDB, no cookies, the library page unreadable. MZ's game loop stops while its page isn't focused; the driver focuses it after every open.
+- Still to check with a real MZ game: encrypted assets (`.png_`, `.ogg_`), audio, effekseer animations, plugins, a newer engine version (1.9).
+
 ### Phase 3: manager extras
 
 Tags, last played and play time, favourites, unpacking a game zip into a library folder, and the download → games hand-off (a finished download that is a game zip goes to the Games library instead of the converter).
@@ -91,7 +100,7 @@ Tags, last played and play time, favourites, unpacking a game zip into a library
 
 1. **New public repo `rpgm-shelf`.** Created when phase 1 starts.
 2. **Option A**, by phase 0's result.
-3. **No real games yet.** Phase 1 is built and tested against the generated MV fixture. MZ support waits for a real MZ game.
+3. **No real games yet.** Phase 1 is built and tested against the generated MV fixture, MZ (2026-11-25) against a generated MZ game on the MZ 1.1.0 engine.
 4. **Local only for now; Tailscale later.** Tailscale gives one hostname per machine, so the games server will share harbor's host and cookie jar there too. So:
    - the games server never reads, logs or trusts cookies, and a test sends harbor's cookie to it and checks it gains nothing;
    - a game can also *set* cookies for the host that harbor then receives (cookie tossing): harbor's session parsing must ignore a duplicate or unexpected `sid` it didn't issue, with a test;

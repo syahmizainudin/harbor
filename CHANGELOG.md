@@ -2,6 +2,12 @@
 
 Each release has a `## <version>` section. The release pipeline publishes that section as the GitHub release notes, and refuses to release a version without one.
 
+## 0.2.11
+
+Pins cbz-webp 0.5.1, dl-queue 0.6.2, cbz-shelf 0.6.0 and rpgm-shelf 0.2.0.
+
+- **RPG Maker MZ games play** in the Games tab ([rpgm-shelf](https://github.com/syahmizainudin/rpgm-shelf) 0.2.0), with saves kept per account like MV's.
+
 ## 0.2.10
 
 Pins cbz-webp 0.5.1, dl-queue 0.6.2, cbz-shelf 0.6.0 and rpgm-shelf 0.1.1 (unchanged).

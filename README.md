@@ -158,9 +158,9 @@ To start pm2 itself when WSL starts, run the command `pm2 startup` prints (it ne
 
 ## Games
 
-The **Games** tab is [rpgm-shelf](https://github.com/syahmizainudin/rpgm-shelf): RPG Maker MV games played in the browser, with saves kept per account on this computer, so they follow you to any browser.
+The **Games** tab is [rpgm-shelf](https://github.com/syahmizainudin/rpgm-shelf): RPG Maker MV and MZ games played in the browser, with saves kept per account on this computer, so they follow you to any browser.
 
-- Someone with `games.manage` adds folders of games under **Folders**. Each game is a folder with `index.html` and `data/System.json` (or a `www/` folder holding them). MZ games are listed but can't be played yet.
+- Someone with `games.manage` adds folders of games under **Folders**. Each game is a folder with `index.html` and `data/System.json` (or a `www/` folder holding them).
 - **Play** opens the game in a new tab. Games run on their own port (`HARBOR_GAMES_PORT`, default 8768, on 127.0.0.1), never on harbor's: a game is someone else's JavaScript, and this keeps it away from your harbor sign-in. For now games can be played only on the computer running harbor.
 - Turn it off with `HARBOR_GAMES=false`. Settings: `HARBOR_GAMES_PORT`, `HARBOR_GAMES_DB` (default `~/.local/share/harbor/games.db`), `HARBOR_GAMES_SCAN` (rescan at start-up).
 

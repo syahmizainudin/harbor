@@ -11,7 +11,7 @@ Harbor serves two public tools on one two-tab local page and connects them: a fi
 | `harbor` (this one, private) | The combined page, the download → convert hand-off, and the `harbor` command |
 | `cbz-webp` (public) | The converter: `JobQueue`, `ConvertAPI`, and the generic server `serve` that harbor uses |
 | `cbz-shelf` (public) | The library and reader: `Library`, `LibraryAPI` and its page, served at `/library` in harbor's Library tab |
-| `rpgm-shelf` (public) | RPG Maker MV games: `Library` (folders, games, saves per user), `GameServer` (games on their own port, play tokens), `GamesAPI` and its page, served at `/games` in harbor's Games tab |
+| `rpgm-shelf` (public) | RPG Maker MV and MZ games: `Library` (folders, games, saves per user), `GameServer` (games on their own port, play tokens), `GamesAPI` and its page, served at `/games` in harbor's Games tab |
 | `dl-queue` (public) | The downloader: `DownloadQueue` with the `on_saved` and `check_after` hooks, `Auth`, `DownloadAPI` |
 
 Both are dependencies in `pyproject.toml`, pinned by git tag.
@@ -32,7 +32,7 @@ Both are dependencies in `pyproject.toml`, pinned by git tag.
 | `docs/planned-features.md` | Points to the planned-features list, a Claude Doc (https://claude.ai/artifact/GK7bah81qG4Ae8yDAzXV6x) edited without commits; read it through the Claude Docs tools. Detailed plans stay in `docs/plan-*.md` |
 | `docs/design.md` | How harbor looks (colours, layout, the shared pieces, words) and how a request flows; follow it for new features |
 | `docs/plan-site-credentials.md` | The design for saved sign-in details per site (agreed, not built) |
-| `docs/plan-games.md` | The plan for the RPG Maker MV/MZ library and player (`rpgm-shelf`, a separate public tool; phase 1 built there), phase by phase |
+| `docs/plan-games.md` | The plan for the RPG Maker MV/MZ library and player (`rpgm-shelf`, a separate public tool; phases 1, 2 and MZ built), phase by phase |
 | `harbor/extension.py` | The Chrome extension's fixed ID and origin |
 | `extension/` | The Chrome extension (Manifest V3): `background.js` (menus, badge), `popup.*`, `harbor.js` (talks to harbor), icons rendered from the logo |
 | `ecosystem.config.cjs` | pm2 config that keeps harbor running |
